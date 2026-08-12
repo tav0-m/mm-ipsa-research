@@ -14,7 +14,8 @@ def _validate_prices(prices: pd.DataFrame, labels: list[str]) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Faltan columnas de precios: {missing}")
     panel = prices[labels].copy()
-    panel.index = pd.DatetimeIndex(panel.index).tz_localize(None)
+    panel_dates = pd.DatetimeIndex(pd.to_datetime(panel.index))
+    panel.index = panel_dates.tz_localize(None)
     panel = panel.sort_index()
     if panel.index.has_duplicates or not panel.index.is_monotonic_increasing:
         raise ValueError("El indice de precios debe ser unico y creciente")
@@ -78,13 +79,14 @@ def build_returns(
     out_path.mkdir(parents=True, exist_ok=True)
     panel = _validate_prices(prices, labels)
 
-    daily_unfiltered = panel.pct_change(fill_method=None).iloc[1:]
+    daily_unfiltered = (panel / panel.shift(1) - 1.0).iloc[1:]
     invalid_endpoints = pd.DataFrame(False, index=daily_unfiltered.index, columns=labels)
     imputed_price_count = np.full(len(labels), np.nan)
     mask_status = "unavailable"
     if observation_mask is not None:
         observed = observation_mask.copy()
-        observed.index = pd.DatetimeIndex(observed.index).tz_localize(None)
+        observed_dates = pd.DatetimeIndex(pd.to_datetime(observed.index))
+        observed.index = observed_dates.tz_localize(None)
         observed.rename(columns={column: column.replace(".SN", "") for column in observed.columns}, inplace=True)
         missing_mask = [label for label in labels if label not in observed.columns]
         if missing_mask:
@@ -151,7 +153,10 @@ def build_returns(
         print(f"  [warn] alta tasa de retornos cero (iliquidez o precios stale): {detail}")
     long_zero = quality.loc[quality["zero_run_flag"], ["asset", "max_zero_run_full"]]
     if not long_zero.empty:
-        detail = ", ".join(f"{row.asset}={int(row.max_zero_run_full)}" for row in long_zero.itertuples())
+        detail = ", ".join(
+            f"{asset}={int(value)}"
+            for asset, value in zip(long_zero["asset"], long_zero["max_zero_run_full"])
+        )
         print(f"  [warn] rachas largas de retornos cero: {detail}")
 
     artifacts = {
@@ -198,7 +203,7 @@ def build_returns(
 
 
 if __name__ == "__main__":
-    from src.config import load_config
+    from mm_ipsa.config import load_config
 
     config = load_config()
     path = Path(config["paths"]["data_raw"]) / "adj_close_prices.csv"

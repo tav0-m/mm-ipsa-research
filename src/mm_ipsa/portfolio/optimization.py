@@ -7,8 +7,8 @@ from scipy.cluster.hierarchy import leaves_list, linkage
 from scipy.optimize import linprog, minimize
 from scipy.spatial.distance import squareform
 
-from src.evaluation.scoring import lower_tail_mean
-from src.models.benchmarks import nearest_psd
+from mm_ipsa.evaluation.scoring import lower_tail_mean
+from mm_ipsa.models.benchmarks import nearest_psd
 
 
 def weighted_mean_cov(scenarios: np.ndarray, probabilities: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

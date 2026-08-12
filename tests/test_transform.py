@@ -4,7 +4,12 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from src.data.transform import _max_true_run, _rolling_terminal_fast, build_returns, non_overlapping_windows
+from mm_ipsa.data.transform import (
+    _max_true_run,
+    _rolling_terminal_fast,
+    build_returns,
+    non_overlapping_windows,
+)
 
 
 class TestTransform(unittest.TestCase):

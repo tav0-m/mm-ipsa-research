@@ -5,19 +5,42 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 from pathlib import Path
+from typing import TypedDict, cast
 
 import numpy as np
 import pandas as pd
 import yaml
 
-from src.config import objective_weights, target_parameters
-from src.data.transform import _rolling_terminal_fast, non_overlapping_windows
-from src.evaluation.comparison import compare_focal_model_by_group
-from src.evaluation.scoring import evaluate_scenarios_detailed
-from src.mm.bcd import BCDSolver
-from src.mm.objective import MMObjective
-from src.mm.targets import _ewma_weights, compute_targets
-from src.models.benchmarks import generate_benchmarks
+from mm_ipsa.config import objective_weights, target_parameters
+from mm_ipsa.data.transform import _rolling_terminal_fast, non_overlapping_windows
+from mm_ipsa.evaluation.comparison import compare_focal_model_by_group
+from mm_ipsa.evaluation.scoring import evaluate_scenarios_detailed
+from mm_ipsa.mm.bcd import BCDSolver
+from mm_ipsa.mm.objective import MMObjective
+from mm_ipsa.mm.targets import _ewma_weights, compute_targets
+from mm_ipsa.models.benchmarks import generate_benchmarks
+
+
+class RollingMetadata(TypedDict):
+    experiment_id: str
+    status: str
+    window_type: str
+    refit_all_models_each_fold: bool
+    temporal_leakage_detected: bool
+    horizon: int
+    fold_count: int
+    total_evaluation_windows: int
+    models: list[str]
+    inference: dict[str, object]
+
+
+class RollingOriginResult(TypedDict):
+    artifacts: list[Path]
+    metadata: RollingMetadata
+    fold_scores: pd.DataFrame
+    pooled_scores: pd.DataFrame
+    differences: pd.DataFrame
+    stability: pd.DataFrame
 
 
 def load_rolling_origin_config(path: str | Path) -> dict:
@@ -173,7 +196,7 @@ def run_rolling_origin(
     daily_is: pd.DataFrame,
     daily_oos: pd.DataFrame,
     output_dir: str | Path,
-) -> dict[str, object]:
+) -> RollingOriginResult:
     """Recalibra todos los modelos en cada origen y agrega evidencia pareada."""
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -264,6 +287,7 @@ def run_rolling_origin(
         fold_scores = pd.concat(per_model, ignore_index=True)
         fold_scores.to_csv(fold_dir / "probabilistic_scores_summary.csv", index=False)
         fold_score_frames.append(fold_scores)
+        stationarity = cast(dict[str, float], calibration["stationarity"])
         calibration_rows.append(
             {
                 "fold_id": fold_id,
@@ -275,10 +299,8 @@ def run_rolling_origin(
                 "selected_start_id": calibration["selected_start_id"],
                 "best_start_converged": calibration["best_start_converged"],
                 "best_start_stationary": calibration["best_start_stationary"],
-                "x_gradient_inf": calibration["stationarity"]["x_gradient_inf"],
-                "p_tangent_gradient_inf": calibration["stationarity"][
-                    "p_tangent_gradient_inf"
-                ],
+                "x_gradient_inf": stationarity["x_gradient_inf"],
+                "p_tangent_gradient_inf": stationarity["p_tangent_gradient_inf"],
             }
         )
         definition_rows.append(
@@ -336,17 +358,17 @@ def run_rolling_origin(
     differences.to_csv(output / "probabilistic_score_differences_pooled.csv", index=False)
     stability.to_csv(output / "model_stability_summary.csv", index=False)
 
-    metadata = {
-        "experiment_id": experiment_cfg["experiment"]["id"],
-        "status": experiment_cfg["experiment"]["status"],
-        "window_type": experiment_cfg["experiment"]["window_type"],
+    metadata: RollingMetadata = {
+        "experiment_id": str(experiment_cfg["experiment"]["id"]),
+        "status": str(experiment_cfg["experiment"]["status"]),
+        "window_type": str(experiment_cfg["experiment"]["window_type"]),
         "refit_all_models_each_fold": True,
         "temporal_leakage_detected": False,
         "horizon": horizon,
         "fold_count": len(definitions),
         "total_evaluation_windows": int(definitions["evaluation_terminal_rows"].sum()),
         "models": ["MM", *main_cfg["benchmarks"]["include"]],
-        "inference": inference_cfg,
+        "inference": cast(dict[str, object], inference_cfg),
     }
     (output / "experiment_metadata.json").write_text(
         json.dumps(metadata, indent=2), encoding="utf-8"

@@ -10,9 +10,12 @@
 
 ## v0.5 — Eficiencia experimental
 
-- [ ] Cachear folds por hash de datos, configuración y código relevante.
+- [x] Reanudar etapas completas mediante hashes de datos, configuración, código y salidas.
+- [x] Migrar a un paquete instalable con CLI única.
+- [x] Separar planificación sin efectos, chequeos rápidos y validación completa.
+- [x] Ampliar CI a Ruff, Pyright, build y Python 3.11–3.12.
+- [ ] Cachear folds individuales para recuperar ejecuciones rolling-origin interrumpidas.
 - [ ] Perfilar BCD y reducir recomputaciones de gradientes.
-- [ ] Separar chequeos rápidos de las validaciones completas de release.
 - [ ] Ejecutar rolling-origin en paralelo con límites explícitos de memoria.
 
 ## v0.6 — Evidencia prospectiva

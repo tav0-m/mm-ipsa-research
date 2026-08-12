@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from src.data.download import _extract_close, _max_missing_run
+from mm_ipsa.data.download import _extract_close, _max_missing_run
 
 
 class TestDownload(unittest.TestCase):

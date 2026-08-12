@@ -3,12 +3,12 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from src.evaluation.scoring import (
+from mm_ipsa.evaluation.scoring import (
     christoffersen_test,
     crps_ensemble,
+    evaluate_scenarios,
     kupiec_test,
     lower_tail_mean,
-    evaluate_scenarios,
     score_scenarios_by_observation,
     weighted_quantile,
 )
@@ -44,7 +44,7 @@ class TestScoring(unittest.TestCase):
             scenarios,
             probabilities,
             observations,
-            observation_ids=ids,
+            observation_ids=ids.tolist(),
             seed=99,
             energy_pair_samples=2_000,
         )
@@ -58,8 +58,10 @@ class TestScoring(unittest.TestCase):
             energy_pair_samples=2_000,
         )
         for metric in ("mean_crps", "energy_score", "variogram_score"):
+            observed_mean = by_observation[metric].to_numpy(dtype=float).mean()
+            expected_mean = aggregate[metric].to_numpy(dtype=float)[0]
             self.assertAlmostEqual(
-                by_observation[metric].mean(), aggregate.loc[0, metric]
+                float(observed_mean), float(expected_mean)
             )
 
 

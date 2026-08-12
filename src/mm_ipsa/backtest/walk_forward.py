@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import cast
 
 import numpy as np
 import pandas as pd
-
 
 Estimator = Callable[[pd.DataFrame], np.ndarray]
 
 
 def rebalance_dates(index: pd.DatetimeIndex, frequency: str = "Q") -> pd.DatetimeIndex:
     """Primer dia observado de cada nuevo periodo de rebalanceo."""
-    marker = pd.Series(index=index, data=index.to_period(frequency))
-    return pd.DatetimeIndex(marker.groupby(marker).apply(lambda values: values.index[0]).to_list())
+    periods = index.to_period(frequency)
+    return pd.DatetimeIndex(index[~periods.duplicated()])
 
 
 def simulate_strategy(
@@ -31,12 +31,19 @@ def simulate_strategy(
     values, records = [], []
     cost_rate = transaction_cost_bps / 10_000.0
     total_turnover = total_cost_fraction = 0.0
-    schedule = {pd.Timestamp(date): np.asarray(w, dtype=float) for date, w in target_weights.items()}
+    schedule = {
+        pd.Timestamp(date.to_pydatetime()): np.asarray(weights, dtype=float)
+        for date, weights in target_weights.items()
+    }
+    dates = pd.DatetimeIndex(pd.to_datetime(daily_returns.index))
+    daily_returns = daily_returns.copy()
+    daily_returns.index = dates
 
-    for date, row in daily_returns.iterrows():
+    for date_value, row in daily_returns.iterrows():
+        date = pd.Timestamp(str(date_value))
         turnover = cost = 0.0
-        if pd.Timestamp(date) in schedule:
-            target = schedule[pd.Timestamp(date)]
+        if date in schedule:
+            target = schedule[date]
             if target.shape != (n,) or np.any(target < -1e-12) or not np.isclose(target.sum(), 1.0):
                 raise ValueError(f"Pesos invalidos para {date}")
             turnover = 0.5 * float(np.sum(np.abs(target - current)))
@@ -79,9 +86,12 @@ def walk_forward_weights(
     min_history: int = 252,
 ) -> dict[pd.Timestamp, np.ndarray]:
     """Ajusta pesos solo con filas estrictamente anteriores a cada fecha."""
+    full_returns = full_returns.copy()
+    full_returns.index = pd.DatetimeIndex(pd.to_datetime(full_returns.index))
     evaluation = full_returns.loc[full_returns.index >= pd.Timestamp(evaluation_start)]
     schedule: dict[pd.Timestamp, np.ndarray] = {}
-    for date in rebalance_dates(evaluation.index, frequency):
+    evaluation_dates = cast(pd.DatetimeIndex, pd.to_datetime(evaluation.index))
+    for date in rebalance_dates(evaluation_dates, frequency):
         training = full_returns.loc[full_returns.index < date]
         if len(training) < min_history:
             continue

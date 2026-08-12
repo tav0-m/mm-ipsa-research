@@ -2,8 +2,8 @@ import unittest
 
 import numpy as np
 
-from src.mm.bcd import BCDSolver
-from src.mm.objective import MMObjective
+from mm_ipsa.mm.bcd import BCDSolver
+from mm_ipsa.mm.objective import MMObjective
 
 
 class TestBCDSolver(unittest.TestCase):

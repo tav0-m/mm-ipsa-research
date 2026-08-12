@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from src.analysis.rolling_origin import (
+from mm_ipsa.analysis.rolling_origin import (
     build_fold_samples,
     combine_daily_returns,
     load_rolling_origin_config,

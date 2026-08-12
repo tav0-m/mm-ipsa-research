@@ -1,16 +1,14 @@
-"""
-src/mm/diagnostics.py
-=====================
-Genera diagnósticos completos del modelo MM calibrado.
-Guarda resultados en outputs/tables/ y outputs/figures/
-"""
+"""Diagnósticos tabulares y gráficos de la calibración MM."""
 
+from pathlib import Path
+
+import matplotlib.gridspec as gridspec
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
+from matplotlib import colormaps
+from matplotlib.lines import Line2D
 from scipy import stats
-from pathlib import Path
 
 # Estilo consistente con el informe de investigacion.
 plt.rcParams.update({
@@ -118,7 +116,7 @@ class MMDiagnostics:
         N_eff    = 1.0 / (p**2).sum()
         
         def gini(v):
-            v = np.sort(v); n = len(v)
+            v = np.sort(v)
             return 1 - 2*(np.cumsum(v)/v.sum()).mean()
         
         rows = [
@@ -188,7 +186,7 @@ class MMDiagnostics:
 
         winner = starts_df.iloc[0]
         winner_id = int(winner["start_id"])
-        colors = plt.cm.tab10(np.linspace(0, 1, max(10, len(histories))))
+        colors = colormaps["tab10"](np.linspace(0, 1, max(10, len(histories))))
 
         fig = plt.figure(figsize=(14, 9))
         gs = gridspec.GridSpec(2, 2, figure=fig, height_ratios=[1.08, 0.92])
@@ -254,7 +252,7 @@ class MMDiagnostics:
         )
 
         fig.suptitle("Robustez BCD: seleccion del start ganador", fontsize=15, fontweight="bold")
-        fig.tight_layout(rect=[0, 0, 1, 0.96])
+        fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.96))
         fig.savefig(self.fig_dir / "convergence_bcd_multistart.png", dpi=180, bbox_inches="tight")
         plt.close(fig)
         print("  [ok] convergence_bcd_multistart.png")
@@ -310,7 +308,7 @@ class MMDiagnostics:
     # ───────────────────────────────────────────────────────────────────────
     def plot_moments_panel(self, terminal: pd.DataFrame) -> None:
         """Panel de momentos histórico vs MM."""
-        X_hist = terminal[self.labels].values
+        X_hist = terminal[self.labels].to_numpy(dtype=float)
         labels = self.labels
         n      = self.n
         x_pos  = np.arange(n)
@@ -341,10 +339,10 @@ class MMDiagnostics:
         ]
         
         for ax, vals_h, vals_m, subtitle, ylabel in panels:
-            bars_h = ax.bar(x_pos-w/2, vals_h, w, label="Histórico",
-                           color=COL_HIST, alpha=0.85, edgecolor="white")
-            bars_m = ax.bar(x_pos+w/2, vals_m, w, label="MM",
-                           color=COL_MM,   alpha=0.85, edgecolor="white")
+            ax.bar(x_pos-w/2, vals_h, w, label="Histórico",
+                   color=COL_HIST, alpha=0.85, edgecolor="white")
+            ax.bar(x_pos+w/2, vals_m, w, label="MM",
+                   color=COL_MM, alpha=0.85, edgecolor="white")
             
             # Porcentajes de error
             for i in range(n):
@@ -368,13 +366,14 @@ class MMDiagnostics:
     # ───────────────────────────────────────────────────────────────────────
     def plot_hist_grid(self, terminal: pd.DataFrame) -> None:
         """Grid de distribuciones terminales histórico vs MM simulado."""
-        X_hist = terminal[self.labels].values
+        X_hist = terminal[self.labels].to_numpy(dtype=float)
         
         # Simular 10000 retornos terminales desde los escenarios MM
         idx = np.random.choice(self.N, size=10000, p=self.p)
         X_mm = self.x[idx]
         
-        ncols = 4; nrows = 4
+        ncols = 4
+        nrows = 4
         fig, axes = plt.subplots(nrows, ncols, figsize=(16, 14))
         fig.suptitle("Distribuciones terminales H=5 días — Histórico vs Simulado MM",
                      fontsize=12, fontweight="bold")
@@ -382,11 +381,14 @@ class MMDiagnostics:
         
         from scipy.stats import ks_2samp
         
+        last_index = -1
         for i, (label, ax) in enumerate(zip(self.labels, axes_f)):
+            last_index = i
             h = X_hist[:, i]
             m = X_mm[:, i]
             
-            xmin = min(h.min(), m.min()); xmax = max(h.max(), m.max())
+            xmin = min(h.min(), m.min())
+            xmax = max(h.max(), m.max())
             pad  = (xmax-xmin)*0.05
             xx   = np.linspace(xmin-pad, xmax+pad, 250)
             
@@ -399,7 +401,7 @@ class MMDiagnostics:
             ax.plot(xx, kde_h(xx), color=COL_HIST, lw=2.2, label="Histórico KDE")
             ax.plot(xx, kde_m(xx), color=COL_MM,   lw=2.0, ls="--", label="MM KDE")
             
-            ks, _ = ks_2samp(h, m)
+            ks = float(np.asarray(ks_2samp(h, m), dtype=float).ravel()[0])
             col_badge = "#27AE60" if ks<0.10 else ("#F39C12" if ks<0.15 else "#E74C3C")
             ax.text(0.03, 0.97, f"KS={ks:.3f}", transform=ax.transAxes,
                     va="top", fontsize=7.5, color="white", fontweight="bold",
@@ -411,12 +413,12 @@ class MMDiagnostics:
             ax.set_ylabel("Densidad", fontsize=7)
             ax.tick_params(labelsize=7)
         
-        if i < len(axes_f)-1:
-            for j in range(i+1, len(axes_f)):
+        if last_index < len(axes_f)-1:
+            for j in range(last_index+1, len(axes_f)):
                 axes_f[j].set_visible(False)
         
-        handles = [plt.Line2D([0],[0],color=COL_HIST,lw=2,label="Histórico"),
-                   plt.Line2D([0],[0],color=COL_MM,lw=2,ls="--",label="MM")]
+        handles = [Line2D([0],[0],color=COL_HIST,lw=2,label="Histórico"),
+                   Line2D([0],[0],color=COL_MM,lw=2,ls="--",label="MM")]
         fig.legend(handles=handles, loc="lower right", fontsize=9, ncol=2)
         
         plt.tight_layout()
@@ -441,8 +443,10 @@ class MMDiagnostics:
             (axes[2], diff,           "Diferencia MM−Hist","RdBu_r",-0.08,0.08),
         ]:
             im = ax.imshow(mat, cmap=cmap, vmin=vmin, vmax=vmax, aspect="auto")
-            ax.set_xticks(range(n)); ax.set_xticklabels(labs,rotation=45,ha="right",fontsize=6)
-            ax.set_yticks(range(n)); ax.set_yticklabels(labs, fontsize=6)
+            ax.set_xticks(range(n))
+            ax.set_xticklabels(labs, rotation=45, ha="right", fontsize=6)
+            ax.set_yticks(range(n))
+            ax.set_yticklabels(labs, fontsize=6)
             ax.set_title(title, fontsize=10, fontweight="bold")
             plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
             
@@ -477,8 +481,8 @@ class MMDiagnostics:
         self.plot_corr_matrices()
         
         df_mae = self.table_mae()
-        df_mom = self.table_moments()
-        df_prb = self.table_probs()
+        self.table_moments()
+        self.table_probs()
         
         print("\n  MAE por momento:")
         for _, row in df_mae.iterrows():

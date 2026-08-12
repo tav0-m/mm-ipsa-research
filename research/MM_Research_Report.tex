@@ -19,7 +19,7 @@
 y decisiones de portafolio en acciones chilenas\\[0.5em]
 \large Protocolo e informe de investigación independiente}
 \author{Gustavo Chuquiviguel}
-\date{Versión 0.4 --- agosto de 2026}
+\date{Versión 0.5 --- agosto de 2026}
 
 \begin{document}
 \maketitle
@@ -130,7 +130,7 @@ semana,
  \lambda=0.5^{1/(11\times5)}\approx0.98748,
 \end{equation}
 de modo que una observación de 55 filas recibe la mitad del peso de la más reciente.
-El valor legacy $0.94$ tenía vida media de solo 11.2 filas.
+En contraste, $lambda=0.94$ tendría una vida media de solo 11.2 filas.
 
 Se aplica una contracción lineal explícita del 10\% hacia la diagonal para mejorar
 condicionamiento. No se la denomina Ledoit--Wolf exacta; la literatura de shrinkage
@@ -311,10 +311,6 @@ cobertura de cola razonable y produce una mejora económica neta cuyo intervalo 
 incertidumbre sea compatible con la afirmación. Un resultado negativo también es un
 resultado de investigación válido.
 
-Los artefactos previos a esta versión son legacy: cambió el gradiente, la escala de
-momentos, el término de covarianza, el criterio de convergencia, el EWMA y los
-benchmarks. Por ello sus valores numéricos no se mezclan con una nueva corrida.
-
 \section{Reproducibilidad}
 
 Cada corrida final contiene configuración, versiones, hash de código y SHA-256 de
@@ -322,9 +318,8 @@ artefactos. La suite automatizada verifica gradientes, monotonía de $G$, compos
 de retornos, parametrización de benchmarks, scores, restricciones de portafolio y
 ausencia de look-ahead en el motor walk-forward y en el filtro de liquidez, agregación
 de pérdidas pareadas, folds rolling-origin, ajuste Holm y selección de starts
-estacionarios. Los 45 tests
-verdes prueban contratos de
-software; no prueba rentabilidad futura.
+estacionarios. Los 49 tests verdes prueban contratos de software; no prueban
+rentabilidad futura.
 
 Además, cada frontera del pipeline mantiene un manifiesto de linaje con hashes de
 entradas, código relevante y salidas. Transformación, MM, benchmarks, evaluación,

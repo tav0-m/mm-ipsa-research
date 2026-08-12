@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from src.analysis.liquidity_robustness import select_liquid_universe
+from mm_ipsa.analysis.liquidity_robustness import select_liquid_universe
 
 
 class TestLiquidityRobustness(unittest.TestCase):

@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from src.models.benchmarks import gaussian_terminal, student_t_terminal
+from mm_ipsa.models.benchmarks import gaussian_terminal, student_t_terminal
 
 
 class TestBenchmarks(unittest.TestCase):

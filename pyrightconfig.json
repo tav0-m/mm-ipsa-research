@@ -1,6 +1,8 @@
 {
   "venvPath": ".",
   "venv": ".venv",
-  "pythonVersion": "3.13",
-  "include": ["src", "run.py", "generate_plots.py", "verify.py"]
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic",
+  "extraPaths": ["src"],
+  "include": ["src/mm_ipsa", "run.py", "verify.py", "tests"]
 }

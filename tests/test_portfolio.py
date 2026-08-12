@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from src.portfolio.optimization import (
+from mm_ipsa.portfolio.optimization import (
     equal_weight,
     hierarchical_risk_parity,
     inverse_variance,

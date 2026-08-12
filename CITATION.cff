@@ -2,8 +2,10 @@ cff-version: 1.2.0
 message: "If you use this research software, please cite it using this metadata."
 title: "MM-IPSA Research"
 type: software
-version: 0.4.0
-date-released: 2026-08-10
+version: 0.5.0
+date-released: 2026-08-12
+repository-code: "https://github.com/tav0-m/mm-ipsa-research"
+url: "https://tav0-m.github.io/mm-ipsa-research/"
 authors:
   - family-names: "Chuquiviguel"
     given-names: "Gustavo"

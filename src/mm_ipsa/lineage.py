@@ -10,10 +10,15 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
-
+from typing import Iterable, TypedDict
 
 SCHEMA_VERSION = 1
+
+
+class LineageValidation(TypedDict):
+    valid: bool
+    stage: str | None
+    errors: list[str]
 
 
 def sha256_file(path: str | Path) -> str:
@@ -78,7 +83,7 @@ def write_lineage(
     return manifest
 
 
-def validate_lineage(manifest_path: str | Path, *, root: str | Path) -> dict[str, object]:
+def validate_lineage(manifest_path: str | Path, *, root: str | Path) -> LineageValidation:
     """Valida esquema, existencia, tamaño y hash de entradas y salidas."""
     manifest = Path(manifest_path)
     errors: list[str] = []
@@ -115,7 +120,12 @@ def validate_lineage(manifest_path: str | Path, *, root: str | Path) -> dict[str
                 continue
             if sha256_file(path) != record.get("sha256"):
                 errors.append(f"hash_mismatch:{relative}")
-    return {"valid": not errors, "stage": payload.get("stage"), "errors": errors}
+    stage = payload.get("stage")
+    return {
+        "valid": not errors,
+        "stage": stage if isinstance(stage, str) else None,
+        "errors": errors,
+    }
 
 
 def assert_lineage_current(manifest_path: str | Path, *, root: str | Path) -> None:

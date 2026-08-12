@@ -1,6 +1,6 @@
 import unittest
 
-from src.config import load_config, objective_weights, target_parameters
+from mm_ipsa.config import load_config, objective_weights, target_parameters
 
 
 class TestConfig(unittest.TestCase):

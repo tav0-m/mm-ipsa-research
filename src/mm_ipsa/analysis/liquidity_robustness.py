@@ -10,20 +10,20 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from src.backtest.walk_forward import (
+from mm_ipsa.backtest.walk_forward import (
     moving_block_bootstrap_sharpe_difference,
     performance_metrics,
     simulate_strategy,
     walk_forward_weights,
 )
-from src.config import objective_weights, target_parameters
-from src.evaluation.comparison import compare_focal_model
-from src.evaluation.scoring import evaluate_scenarios_detailed
-from src.mm.bcd import BCDSolver
-from src.mm.objective import MMObjective
-from src.mm.targets import _ewma_weights, compute_targets, save_targets
-from src.models.benchmarks import generate_benchmarks
-from src.portfolio.optimization import (
+from mm_ipsa.config import objective_weights, target_parameters
+from mm_ipsa.evaluation.comparison import compare_focal_model
+from mm_ipsa.evaluation.scoring import evaluate_scenarios_detailed
+from mm_ipsa.mm.bcd import BCDSolver
+from mm_ipsa.mm.objective import MMObjective
+from mm_ipsa.mm.targets import _ewma_weights, compute_targets, save_targets
+from mm_ipsa.models.benchmarks import generate_benchmarks
+from mm_ipsa.portfolio.optimization import (
     equal_weight,
     hierarchical_risk_parity,
     inverse_variance,
@@ -219,8 +219,9 @@ def _run_backtest(
 ) -> tuple[pd.DataFrame, pd.DataFrame, list[Path]]:
     full = pd.concat([daily_is, daily_oos]).sort_index()
     start_oos = pd.Timestamp(main_cfg["data"]["start_oos"])
-    schedules = {
-        name: {daily_oos.index[0]: weights} for name, weights in static_weights.items()
+    first_oos_date = pd.Timestamp(str(daily_oos.index[0]))
+    schedules: dict[str, dict[pd.Timestamp, np.ndarray]] = {
+        name: {first_oos_date: weights} for name, weights in static_weights.items()
     }
     designs = {name: "static_single_shot_oos" for name in schedules}
 

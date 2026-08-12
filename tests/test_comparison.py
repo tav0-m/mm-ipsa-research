@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from src.evaluation.comparison import (
+from mm_ipsa.evaluation.comparison import (
     compare_focal_model,
     compare_focal_model_by_group,
     grouped_moving_block_bootstrap_loss_difference,

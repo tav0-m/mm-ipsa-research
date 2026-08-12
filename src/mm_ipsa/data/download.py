@@ -11,8 +11,8 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-from src.config import load_config
-from src.lineage import sha256_file
+from mm_ipsa.config import load_config
+from mm_ipsa.lineage import sha256_file
 
 
 def _atomic_csv(frame: pd.DataFrame, path: Path, *, index: bool = True) -> None:
@@ -40,13 +40,19 @@ def _extract_close(raw: pd.DataFrame, tickers: list[str]) -> pd.DataFrame:
     if isinstance(raw.columns, pd.MultiIndex):
         if "Close" not in raw.columns.get_level_values(0):
             raise RuntimeError("La respuesta del proveedor no contiene el campo Close")
-        prices = raw["Close"].copy()
+        close = raw["Close"]
+        if not isinstance(close, pd.DataFrame):
+            raise RuntimeError("El campo Close no contiene un panel por ticker")
+        prices = close.copy()
     else:
         prices = raw.copy()
     missing_tickers = [ticker for ticker in tickers if ticker not in prices.columns]
     if missing_tickers:
         raise RuntimeError(f"Tickers ausentes en la descarga: {missing_tickers}")
-    return prices[tickers]
+    result = prices.loc[:, tickers]
+    if not isinstance(result, pd.DataFrame):
+        raise RuntimeError("La seleccion de precios no produjo un panel tabular")
+    return result
 
 
 def download_prices(cfg: dict) -> pd.DataFrame:
@@ -76,13 +82,14 @@ def download_prices(cfg: dict) -> pd.DataFrame:
         threads=False,
         timeout=30,
     )
-    if raw.empty:
+    if raw is None or not isinstance(raw, pd.DataFrame) or raw.empty:
         raise RuntimeError("Yahoo Finance no devolvio precios; no se reemplaza el panel canonico")
 
     downloaded_rows = len(raw)
     prices_raw = _extract_close(raw, tickers)
     prices_raw.columns = labels
-    prices_raw.index = pd.DatetimeIndex(prices_raw.index).tz_localize(None)
+    raw_dates = pd.DatetimeIndex(pd.to_datetime(prices_raw.index))
+    prices_raw.index = raw_dates.tz_localize(None)
     duplicate_dates = int(prices_raw.index.duplicated(keep="last").sum())
     prices_raw = prices_raw[~prices_raw.index.duplicated(keep="last")].sort_index()
     prices_raw = prices_raw.replace([np.inf, -np.inf], np.nan)

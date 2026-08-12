@@ -6,6 +6,8 @@
 4. Ejecute:
 
 ```powershell
+.\.venv\Scripts\python.exe -m ruff check src tests run.py verify.py
+.\.venv\Scripts\python.exe -m pyright --project pyrightconfig.json
 .\scripts\release_check.ps1
 ```
 
@@ -16,3 +18,5 @@
 ```
 
 Una mejora de software no debe presentarse como mejora financiera sin evaluación OOS, incertidumbre y comparación con benchmarks simples.
+
+Use `mm-ipsa run --step all --plan` antes de ejecutar el pipeline y `--resume` para reutilizar únicamente etapas cuyos hashes sigan vigentes.

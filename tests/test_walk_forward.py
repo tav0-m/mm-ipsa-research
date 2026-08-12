@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from src.backtest.walk_forward import simulate_strategy, walk_forward_weights
+from mm_ipsa.backtest.walk_forward import simulate_strategy, walk_forward_weights
 
 
 class TestWalkForward(unittest.TestCase):

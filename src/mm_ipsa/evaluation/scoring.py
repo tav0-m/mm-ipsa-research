@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 import numpy as np
 import pandas as pd
 from scipy.stats import chi2
@@ -106,7 +108,7 @@ def _observation_score_components(
     scenarios: np.ndarray,
     probabilities: np.ndarray,
     observations: np.ndarray,
-    observation_ids: list[object] | np.ndarray | None,
+    observation_ids: Iterable[object] | None,
     seed: int,
     energy_pair_samples: int,
 ) -> tuple[pd.DataFrame, np.ndarray]:
@@ -151,7 +153,7 @@ def score_scenarios_by_observation(
     scenarios: np.ndarray,
     probabilities: np.ndarray,
     observations: np.ndarray,
-    observation_ids: list[object] | np.ndarray | None = None,
+    observation_ids: Iterable[object] | None = None,
     seed: int = 0,
     energy_pair_samples: int = 20_000,
 ) -> pd.DataFrame:
@@ -242,7 +244,7 @@ def evaluate_scenarios_detailed(
     probabilities: np.ndarray,
     observations: np.ndarray,
     labels: list[str],
-    observation_ids: list[object] | np.ndarray | None = None,
+    observation_ids: Iterable[object] | None = None,
     alpha: float = 0.05,
     seed: int = 0,
     energy_pair_samples: int = 20_000,

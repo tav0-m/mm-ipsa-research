@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from src.mm.targets import resolve_decay_lambda
+from mm_ipsa.mm.targets import resolve_decay_lambda
 
 
 def load_config(path: str | Path = "config.yaml") -> dict:

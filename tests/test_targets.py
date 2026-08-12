@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from src.mm.targets import (
+from mm_ipsa.mm.targets import (
     _ewma_weights,
     compute_targets,
     decay_from_half_life,
@@ -18,7 +18,7 @@ class TestTargets(unittest.TestCase):
         self.assertAlmostEqual(decay**55, 0.5, places=12)
         self.assertGreater(decay, 0.98)
 
-    def test_legacy_point_94_is_about_eleven_rows_not_weeks(self):
+    def test_point_94_has_an_eleven_row_half_life(self):
         half_life_rows = np.log(0.5) / np.log(0.94)
         self.assertAlmostEqual(half_life_rows, 11.20, places=2)
 

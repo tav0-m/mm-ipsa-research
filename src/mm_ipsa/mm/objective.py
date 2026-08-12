@@ -1,30 +1,8 @@
-"""
-src/mm/objective.py  —  v2 VECTORIZADA
-=======================================
-Función objetivo F(x,p) del Matching-Moment con gradientes 100% vectorizados.
+"""Objetivo Matching-Moment vectorizado y sus gradientes analíticos.
 
-PROBLEMA CON LA VERSIÓN ANTERIOR:
-  grad_x usaba 3 bucles anidados Python (n × N × n = 15 × 200 × 15 = 45,000 iter)
-  grad_p usaba 2 bucles anidados Python (N × n = 200 × 15 = 3,000 iter)
-  → Resultado: ~27 ms y ~19 ms por llamada respectivamente
-
-SOLUCIÓN:
-  Reemplazar todos los bucles por operaciones NumPy matriciales.
-  grad_x: bucles → broadcasting + einsum     → 0.78 ms  (33x más rápido)
-  grad_p: bucles → matmul + einsum           → 1.06 ms  (18x más rápido)
-
-IMPACTO EN EL PIPELINE:
-  BCD 150 iter × 5 starts: 5.1 min → 0.16 min (97% reducción)
-  La lógica matemática es IDÉNTICA — solo cambia la implementación.
-
-Verificación de correctitud:
-  max|grad_x_old - grad_x_new| < 2e-15  (error de punto flotante)
-  max|grad_p_old - grad_p_new| < 2e-05  (error de punto flotante)
-
-Esta funcion es una extension de optimizacion propia: ajusta momentos marginales
-individuales y covarianzas mediante minimos cuadrados. No es una implementacion
-literal del algoritmo algebraico de Ponomareva, Roman y Date (2015), ni de la
-reformulacion de Contreras, Bosch y Herrera (2018).
+Esta extensión ajusta momentos marginales y covarianzas mediante mínimos
+cuadrados. No es una implementación literal de Ponomareva, Roman y Date (2015)
+ni de la reformulación de Contreras, Bosch y Herrera (2018).
 """
 
 import numpy as np

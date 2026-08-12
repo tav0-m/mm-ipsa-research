@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from src.mm.objective import MMObjective
+from mm_ipsa.mm.objective import MMObjective
 
 
 class TestMMObjective(unittest.TestCase):

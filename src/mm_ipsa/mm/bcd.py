@@ -1,6 +1,3 @@
-from __future__ import annotations
-import warnings as _warnings
-
 """Optimizador multi-start por descenso en bloques para escenarios MM.
 
 La función de selección es ``G = F + lambda * KL(p || uniforme)``. El bloque
@@ -10,24 +7,48 @@ activos. Los modos SLSQP, secuencial y Jacobi se conservan únicamente como
 alternativas explícitas para experimentación y compatibilidad.
 """
 
+from __future__ import annotations
+
+import multiprocessing as mp
+import time
+import warnings as _warnings
+from pathlib import Path
+from typing import Protocol
+
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
-from pathlib import Path
-import multiprocessing as mp
-import time
 
-from src.mm.objective import MMObjective
+
+class ObjectiveProtocol(Protocol):
+    @property
+    def N(self) -> int: ...
+
+    @property
+    def n(self) -> int: ...
+
+    @property
+    def M(self) -> np.ndarray: ...
+
+    def evaluate(self, x: np.ndarray, p: np.ndarray) -> float: ...
+
+    def grad_x(self, x: np.ndarray, p: np.ndarray) -> np.ndarray: ...
+
+    def grad_p(self, x: np.ndarray, p: np.ndarray) -> np.ndarray: ...
 
 
 # Funcion libre para que pickle pueda serializarla (requerido por Pool)
 def _optimize_column(args):
     obj, x_snapshot, p, i = args
+
     def fun(xi):
-        xt = x_snapshot.copy(); xt[:, i] = xi
+        xt = x_snapshot.copy()
+        xt[:, i] = xi
         return obj.evaluate(xt, p)
+
     def grad(xi):
-        xt = x_snapshot.copy(); xt[:, i] = xi
+        xt = x_snapshot.copy()
+        xt[:, i] = xi
         return obj.grad_x(xt, p)[:, i]
     res = minimize(fun, x_snapshot[:, i], jac=grad, method='L-BFGS-B',
                    options={'ftol': 1e-9, 'maxiter': 100, 'maxls': 20})
@@ -46,7 +67,7 @@ class BCDSolver:
     warm_noise : float  amplitud del warm restart como fraccion de sigma_hist
     """
 
-    def __init__(self, objective: MMObjective, cfg_mm: dict,
+    def __init__(self, objective: ObjectiveProtocol, cfg_mm: dict,
                  n_workers: int | None = None, warm_noise: float = 0.15):
         self.obj            = objective
         self.N              = cfg_mm["N_scenarios"]
@@ -274,6 +295,8 @@ class BCDSolver:
             scale = max(float(np.max(np.abs(gradient))), 1e-12)
             step = self.p_step_scale / scale
             accepted = False
+            candidate = p_current
+            G_candidate = G_current
 
             for _ in range(25):
                 logits = np.log(np.clip(p_current, 1e-300, None)) - step * gradient
@@ -312,11 +335,15 @@ class BCDSolver:
         x_new = x.copy()
         for i in range(self.n):
             G_before = self.regularized_objective(x_new, p)
+
             def fun_i(xi, i=i):
-                xt = x_new.copy(); xt[:, i] = xi
+                xt = x_new.copy()
+                xt[:, i] = xi
                 return obj.evaluate(xt, p)
+
             def grad_i(xi, i=i):
-                xt = x_new.copy(); xt[:, i] = xi
+                xt = x_new.copy()
+                xt[:, i] = xi
                 return obj.grad_x(xt, p)[:, i]
             res = minimize(fun_i, x_new[:, i], jac=grad_i,
                            method="L-BFGS-B",
@@ -557,21 +584,25 @@ class BCDSolver:
             self.best_start_id = int(fallback["start_id"])
             self.history = fallback["history"]
             self.history_G = fallback["history_G"]
-        n_active  = int((self.best_p > 1e-6).sum())
-        N_eff     = 1.0 / (self.best_p ** 2).sum()
-        entropy   = self._entropy(self.best_p)
+        best_x = self.best_x
+        best_p = self.best_p
+        if best_x is None or best_p is None:
+            raise RuntimeError("El solver termino sin una solucion seleccionada")
+        n_active  = int((best_p > 1e-6).sum())
+        N_eff     = 1.0 / (best_p ** 2).sum()
+        entropy   = self._entropy(best_p)
         max_entr  = float(np.log(self.N))
         entr_pct  = entropy / max_entr * 100.0
 
         # Cuantos escenarios concentran el 50% y 80% de la masa
-        p_sorted  = np.sort(self.best_p)[::-1]
+        p_sorted  = np.sort(best_p)[::-1]
         cumsum    = np.cumsum(p_sorted)
         n50 = int(np.searchsorted(cumsum, 0.50)) + 1
         n80 = int(np.searchsorted(cumsum, 0.80)) + 1
 
         print("\n[bcd] resumen")
         print(f"  F_best={self.best_F:.6f}, G_best={self.best_G:.6f}, tiempo={elapsed:.1f}s")
-        print(f"  activos={n_active}/{self.N}, N_eff={N_eff:.1f}, p_max={self.best_p.max():.4f}")
+        print(f"  activos={n_active}/{self.N}, N_eff={N_eff:.1f}, p_max={best_p.max():.4f}")
         print(f"  entropia={entropy:.4f}/{max_entr:.4f} ({entr_pct:.1f}%), masa50={n50}, masa80={n80}")
         if self.solver_events:
             accepted = sum(event.get("accepted_by_descent", False) for event in self.solver_events)
@@ -580,7 +611,7 @@ class BCDSolver:
         if out_path is not None:
             self._save_history(Path(out_path))
 
-        return self.best_x, self.best_p
+        return best_x, best_p
 
 
     # -----------------------------------------------------------------------

@@ -4,7 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="MM-IPSA Research: generación de escenarios y evaluación temporal reproducible.">
-  <title>MM-IPSA Research · v0.4.0</title>
+  <meta name="theme-color" content="#111827">
+  <meta property="og:title" content="MM-IPSA Research · v0.5.0">
+  <meta property="og:description" content="Generación de escenarios y evaluación rolling-origin reproducible sobre acciones chilenas.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://tav0-m.github.io/mm-ipsa-research/">
+  <meta property="og:image" content="https://raw.githubusercontent.com/tav0-m/mm-ipsa-research/main/docs/assets/linkedin-project-card.png">
+  <title>MM-IPSA Research · v0.5.0</title>
   <style>
     :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
     body { max-width: 980px; margin: 0 auto; padding: 32px 20px 64px; line-height: 1.55; }
@@ -16,24 +22,31 @@
     .metric { border-left: 4px solid #7c3aed; padding-left: 14px; }
     .metric strong { display: block; font-size: 1.65rem; }
     img { max-width: 100%; height: auto; margin: 18px 0; }
+    .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+    .gallery img { margin: 0; }
     table { border-collapse: collapse; width: 100%; }
     th, td { padding: 9px; border-bottom: 1px solid #8886; text-align: right; }
     th:first-child, td:first-child { text-align: left; }
     code { overflow-wrap: anywhere; }
     footer { margin-top: 48px; font-size: .92rem; opacity: .8; }
+    nav { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 20px; }
   </style>
 </head>
 <body>
   <header>
-    <p class="status">Research release · v0.4.0 · validación de desarrollo</p>
+    <p class="status">Research release · v0.5.0 · validación de desarrollo</p>
     <h1>Generación de escenarios por ajuste de momentos</h1>
     <p>Investigación reproducible sobre si una distribución discreta MM-BCD mejora pronósticos probabilísticos y decisiones de portafolio en acciones chilenas.</p>
+    <nav aria-label="Enlaces del proyecto">
+      <a href="https://github.com/tav0-m/mm-ipsa-research">Código en GitHub</a>
+      <a href="https://github.com/tav0-m/mm-ipsa-research/blob/main/research/build/MM_Research_Report.pdf">Informe PDF</a>
+    </nav>
   </header>
 
   <section class="metrics" aria-label="Resumen de validación">
     <div class="metric"><strong>4</strong>folds temporales</div>
     <div class="metric"><strong>169</strong>ventanas OOS H=5</div>
-    <div class="metric"><strong>45</strong>tests automatizados</div>
+    <div class="metric"><strong>49</strong>tests automatizados</div>
     <div class="metric"><strong>9</strong>etapas de linaje</div>
   </section>
 
@@ -49,8 +62,13 @@
     </tbody>
   </table>
 
-  <img src="assets/rolling-origin-crps.png" alt="Exceso de CRPS de cuatro modelos en cuatro folds temporales.">
-  <img src="assets/paired-score-differences.png" alt="Diferencias MM menos control e intervalos de confianza para tres scoring rules.">
+  <h2>Evidencia gráfica</h2>
+  <div class="gallery">
+    <img src="assets/linkedin-02-pooled-crps.png" alt="Exceso de CRPS pooled de cada modelo respecto de Student-t.">
+    <img src="assets/linkedin-03-temporal-crps.png" alt="Exceso de CRPS de cuatro modelos en cuatro folds temporales.">
+    <img src="assets/linkedin-04-paired-inference.png" alt="Diferencias MM menos control e intervalos de confianza para tres scoring rules.">
+    <img src="assets/linkedin-05-calibration-vs-prediction.png" alt="Objetivo de calibración in-sample frente al exceso de CRPS fuera de muestra.">
+  </div>
 
   <h2>Método</h2>
   <p>Todos los modelos se recalibran en cada origen con ventana expansiva. La evaluación usa retornos terminales no solapados, bootstrap temporal por bloques y ajuste de Holm. El pipeline conserva calidad raw, configuración, hashes, linaje y un snapshot auditable.</p>
@@ -58,8 +76,8 @@
   <h2>Límite</h2>
   <p>Las fechas ya fueron observadas durante el desarrollo. Los resultados son evidencia retrospectiva reproducible, no un test futuro sellado ni una recomendación de inversión.</p>
 
-  <p><a href="../research/build/MM_Research_Report.pdf">Descargar el informe metodológico en PDF</a></p>
+  <p><a href="https://github.com/tav0-m/mm-ipsa-research/blob/main/research/build/MM_Research_Report.pdf">Consultar el informe metodológico en PDF</a></p>
 
-  <footer>© 2026 Gustavo Chuquiviguel · MIT para código y documentación propia.</footer>
+  <footer>© 2026 Gustavo Chuquiviguel · MIT para código y documentación propia · <a href="https://github.com/tav0-m/mm-ipsa-research">Repositorio</a>.</footer>
 </body>
 </html>

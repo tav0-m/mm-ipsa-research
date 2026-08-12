@@ -7,7 +7,6 @@ from collections.abc import Iterable
 import numpy as np
 import pandas as pd
 
-
 DEFAULT_METRICS = ("mean_crps", "energy_score", "variogram_score")
 
 

@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.lineage import validate_lineage, write_lineage
+from mm_ipsa.lineage import validate_lineage, write_lineage
 
 
 class TestLineage(unittest.TestCase):

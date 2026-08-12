@@ -60,8 +60,6 @@ Todos reciben la misma media, covarianza, horizonte H y ponderación temporal:
 - Student-t terminal con grados de libertad prefijados y covarianza parametrizada.
 - Distribución histórica EWMA sin ruido Monte Carlo.
 
-Wiener diario queda como denominación legacy, no como benchmark principal.
-
 ## 7. Sensibilidad de liquidez
 
 El universo de 15 activos permanece como análisis principal. La sensibilidad `liquidity_is_filter_v1` se define en un archivo separado y solo puede usar métricas calculadas hasta 2023-12-31: tasa de retornos cero IS no mayor a 3% y racha máxima IS no mayor a cinco sesiones. Debe conservar al menos ocho activos.
