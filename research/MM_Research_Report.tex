@@ -1,0 +1,358 @@
+\documentclass[11pt,letterpaper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{needspace}
+\geometry{margin=2.4cm}
+\hypersetup{colorlinks=true,linkcolor=blue!45!black,urlcolor=blue!55!black,citecolor=blue!45!black}
+\setlist{nosep,leftmargin=*}
+
+\title{Generación de escenarios por ajuste de momentos\\
+y decisiones de portafolio en acciones chilenas\\[0.5em]
+\large Protocolo e informe de investigación independiente}
+\author{Gustavo Chuquiviguel}
+\date{Versión 0.4 --- agosto de 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Este informe define una investigación cuantitativa independiente sobre generación
+de escenarios discretos para retornos accionarios chilenos. Se estudia una extensión
+propia basada en ajuste de cuatro momentos marginales y covarianzas mediante descenso
+por bloques, y se compara con distribuciones Gaussian, Student-$t$ e histórica
+ponderada construidas al mismo horizonte. El criterio de éxito no es el ajuste
+in-sample: son los scores probabilísticos fuera de muestra, la calibración de riesgo
+y el desempeño de portafolios neto de costos frente a reglas ingenuas y robustas.
+El periodo 2024--2026 ya fue observado durante el desarrollo y se declara validación,
+no test confirmatorio sellado.
+\end{abstract}
+
+\section{Pregunta y contribución}
+
+La pregunta central es si una distribución MM discreta mejora simultáneamente:
+(i) el pronóstico de la distribución de retornos a cinco días; (ii) la cobertura de
+medidas de cola; y (iii) las decisiones de asignación, frente a controles que reciben
+exactamente la misma información.
+
+La contribución de software es un pipeline reproducible que separa ingestión,
+estimación, generación, evaluación y decisión. La contribución metodológica es
+tratar el algoritmo BCD como una extensión propia falsable. No se afirma que sea una
+implementación literal del algoritmo algebraico de Ponomareva, Roman y Date
+\cite{ponomareva2015}, ni de la corrección de Contreras, Bosch y Herrera
+\cite{contreras2018}.
+
+\section{Antecedentes}
+
+El ajuste de propiedades distribucionales es una familia establecida de generación de
+escenarios \cite{hoyland2001,mehrotra2013}. Ponomareva et al. proponen una construcción
+finita que ajusta media, covarianza y promedios marginales de momentos superiores
+\cite{ponomareva2015}. Contreras et al. demuestran que una selección descuidada de
+parámetros puede producir probabilidades negativas y derivan condiciones correctivas
+\cite{contreras2018}. Ese resultado es especialmente pertinente porque su ejemplo usa
+acciones chilenas.
+
+Para evaluar distribuciones se necesitan scoring rules propios: un modelo no debe ser
+premiado por pronósticos mal calibrados pero agudos. CRPS y Energy Score se justifican
+en el marco de Gneiting y Raftery \cite{gneiting2007}. La cobertura VaR se contrasta con
+Kupiec \cite{kupiec1995} y la independencia de excepciones con Christoffersen
+\cite{christoffersen1998}.
+
+\section{Datos y diseño temporal}
+
+El universo vigente contiene 15 acciones chilenas con datos ajustados de Yahoo
+Finance. El proveedor es adecuado para investigación exploratoria, no sustituye una
+fuente institucional. Se conserva el panel raw, la máscara de observación y la
+cobertura previa a cualquier imputación. El \textit{forward fill} está limitado a dos
+días y los retornos se calculan sin relleno implícito.
+
+La descarga vigente contiene 1.605 fechas entre 2020-01-02 y 2026-06-10, cobertura
+raw del 100\% para los 15 activos y cero imputaciones. Aun así, precios sin cambio
+advierten posible iliquidez: AGUAS-A, ANDINA-B, ITAUCL y PARAUCO superan una tasa
+global de retornos cero del 3\%; AGUAS-A alcanza seis sesiones consecutivas en OOS.
+Estas alertas no producen exclusión automática.
+Los retornos cero se usan solo como proxy imperfecto de fricción, siguiendo la
+motivación de Lesmond, Ogden y Trzcinka \cite{lesmond1999}; no reemplazan volumen,
+spread bid--ask ni una fuente institucional de transacciones.
+
+La muestra inicial termina el 31 de diciembre de 2023. Las fechas posteriores se usan
+como validación de desarrollo. Las ventanas rolling $H=5$ sirven para estimar targets;
+los scores usan ventanas no solapadas para no fingir independencia. Un test futuro
+solo podrá empezar después de congelar código, hipótesis e hiperparámetros.
+
+Como robustez temporal se ejecuta además una evaluación expanding rolling-origin en
+2023, 2024, 2025 y 2026-H1. Cada origen recalibra MM y todos los controles usando solo
+su historia disponible, siguiendo las recomendaciones de evaluación OOS de Tashman
+\cite{tashman2000} y las salvaguardas contra leakage discutidas por Hewamalage et al.
+\cite{hewamalage2023}.
+
+\section{Modelo MM-BCD}
+
+Sea $X\in\mathbb{R}^{N\times n}$ el soporte discreto y
+$p\in\Delta_N$ su vector de probabilidades. Para momentos centrales objetivo
+$M_{ki}$ y covarianza objetivo $\Sigma$, se define
+\begin{equation}
+ F(X,p)=\sum_{k=1}^{4}\sum_{i=1}^{n}W_{ki}
+ \left(\widehat m_{ki}-M_{ki}\right)^2
+ +w_\Sigma\sum_{i\ne j}A_{ij}
+ \left(\widehat\Sigma_{ij}-\Sigma_{ij}\right)^2.
+\end{equation}
+La diagonal se excluye del segundo término porque la varianza ya se ajusta en
+$k=2$. Las escalas $W_{ki}$ se construyen con potencias de volatilidad, lo que evita
+divisiones inestables por medias o terceros momentos cercanos a cero.
+
+La función realmente optimizada es
+\begin{equation}
+ G(X,p)=F(X,p)+\lambda_{KL}D_{KL}(p\Vert u),
+ \qquad u_j=1/N.
+\end{equation}
+El término KL controla soluciones degeneradas sin ocultar el costo del ajuste. La
+selección multi-start, el descenso y la convergencia se evalúan sobre $G$. El bloque
+completo de posiciones se optimiza conjuntamente con L-BFGS porque las covarianzas
+acoplan los activos; un Jacobi paralelo no es matemáticamente separable.
+
+Los gradientes analíticos de posiciones y probabilidades están validados con
+diferencias finitas direccionales. Cada subpaso se acepta solo si no aumenta $G$.
+
+\section{Estimación temporal y dependencia}
+
+La vida media se parametriza en semanas. Con once semanas y cinco filas rolling por
+semana,
+\begin{equation}
+ \lambda=0.5^{1/(11\times5)}\approx0.98748,
+\end{equation}
+de modo que una observación de 55 filas recibe la mitad del peso de la más reciente.
+El valor legacy $0.94$ tenía vida media de solo 11.2 filas.
+
+Se aplica una contracción lineal explícita del 10\% hacia la diagonal para mejorar
+condicionamiento. No se la denomina Ledoit--Wolf exacta; la literatura de shrinkage
+\cite{ledoitwolf2004} motiva el control, pero la intensidad debe seleccionarse sin
+usar el test final.
+
+\Needspace{10\baselineskip}
+\section{\texorpdfstring{\enspace}{}Controles y evaluación}
+
+Los tres controles comparten media, covarianza, horizonte y ponderación:
+\begin{enumerate}
+ \item normal multivariada terminal;
+ \item Student-$t$ multivariada terminal con covarianza parametrizada;
+ \item distribución empírica EWMA.
+\end{enumerate}
+
+Las métricas primarias son CRPS marginal y Energy Score multivariado. Se reportan
+además Variogram Score, error de correlación, VaR, Expected Shortfall y pruebas de
+cobertura. Menor score es mejor. El ajuste de momentos dentro de muestra se conserva
+como diagnóstico, no como prueba de superioridad.
+
+La comparación sigue el principio de pérdidas predictivas pareadas de Diebold y
+Mariano \cite{diebold1995}. Cada score se guarda para las mismas 121 ventanas OOS.
+La dependencia temporal se conserva con moving-block bootstrap de cuatro ventanas
+\cite{kunsch1989}, 5.000 remuestreos e intervalo básico centrado. La familia de nueve
+contrastes por universo se ajusta con el procedimiento de Holm \cite{holm1979}.
+En la evidencia pooled de varios orígenes, los bloques se remuestrean dentro de cada
+fold y nunca atraviesan sus fronteras.
+
+\section{\texorpdfstring{\enspace}{}Decisiones de portafolio}
+
+Se comparan Equal Weight, inverse variance, HRP \cite{lopez2016}, mínima varianza
+regularizada, mínimo CVaR \cite{rockafellar2000} y máximo Sharpe regularizado. El
+Expected Shortfall discreto usa masa fraccionaria en el cuantil; así se evita sesgo
+cuando una probabilidad cruza el nivel $\alpha$.
+
+El backtest deja derivar los pesos, registra turnover y descuenta costos en puntos
+base. MM y los controles generativos se evalúan como asignaciones estáticas ajustadas
+una sola vez con la muestra inicial; Equal Weight, inverse variance y HRP incluyen
+además versiones trimestrales con ventana expansiva que usan solo observaciones
+anteriores al rebalanceo. La evidencia estadística se expresa mediante intervalos
+moving-block bootstrap del diferencial de Sharpe frente a Equal Weight.
+
+\section{Resultados de la corrida 2026-08-10}
+
+La corrida vigente contiene 993 observaciones rolling de cinco días para estimación
+y 121 observaciones no solapadas en validación. Se corrigió una tolerancia L-BFGS
+incompatible con la escala de $F$: SciPy comparaba $10^{-9}$ contra una escala mínima
+unitaria pese a que el objetivo era del orden de $10^{-7}$. Con el parámetro
+$x_{\mathrm{ftol}}=10^{-12}$, los cinco starts alcanzan el criterio de convergencia
+en 5--6 iteraciones. El start publicado es el menor $G$ entre los convergentes que
+además cumplen estacionariedad: obtiene $F=1.06\times10^{-10}$,
+$G=6.34\times10^{-6}$ y $N_{\mathrm{eff}}=166.2$ de 500 escenarios. Los residuos
+infinito son $1.12\times10^{-5}$ para $X$ y $8.02\times10^{-5}$ para el gradiente
+tangente de $p$.
+
+\begin{table}[ht]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Modelo & CRPS & Energy & Variogram & Excepciones 5\% \\
+\midrule
+Student-$t$ & 0.020633 & 0.100045 & 0.611200 & 2 \\
+Gaussiano & 0.020668 & 0.099989 & 0.623808 & 0 \\
+MM & 0.020738 & 0.100094 & 0.618069 & 1 \\
+Histórico EWMA & 0.020734 & 0.100132 & 0.617487 & 3 \\
+\bottomrule
+\end{tabular}
+\caption{Validación probabilística; menor score es mejor. ``Excepciones'' cuenta
+activos cuyo test de cobertura VaR rechaza al 5\%.}
+\end{table}
+
+MM no lidera los scores: Student-$t$ obtiene el mejor CRPS y Gaussiano el mejor
+Energy Score. En la
+evaluación económica estática, inverse variance alcanza Sharpe 2.032 y MM de mínima
+varianza 1.959, ambos netos de 20 bps por unidad de turnover. El intervalo bootstrap
+95\% del diferencial de Sharpe anualizado de MM-MinVariance frente a Equal Weight
+walk-forward es $[-0.152,\,0.334]$; contiene cero. Por tanto, la evidencia actual no
+respalda superioridad estadística ni económica de MM. Es un resultado de desarrollo,
+no una conclusión confirmatoria.
+
+\subsection*{Incertidumbre de las diferencias}
+
+La diferencia se define como MM menos control, por lo que un valor positivo es
+desfavorable a MM. El contraste primario CRPS contra Gaussiano cruza cero y ninguno
+de los nueve contrastes del universo completo sobrevive Holm.
+
+\begin{table}[ht]
+\centering
+\small
+\begin{tabular}{llrrr}
+\toprule
+Universo & Contraste & Diferencia & IC95 & p Holm \\
+\midrule
+Completo & CRPS vs Gaussiano & +0.000070 & [-0.000044,0.000162] & 1.000 \\
+Completo & CRPS vs Student-t & +0.000105 & [0.000007,0.000180] & 0.262 \\
+Completo & Variogram vs Student-t & +0.006868 & [0.000864,0.012811] & 0.198 \\
+Líquido & CRPS vs Gaussiano & +0.000070 & [-0.000015,0.000137] & 0.693 \\
+Líquido & Variogram vs hist. & +0.001660 & [0.000577,0.002608] & 0.0108 \\
+\bottomrule
+\end{tabular}
+\caption{Bootstrap temporal pareado. Holm se aplica a nueve contrastes dentro de
+cada universo; la tabla muestra el contraste primario y resultados representativos.}
+\end{table}
+
+La única diferencia que sobrevive Holm aparece en la sensibilidad líquida y es
+contraria a MM: su Variogram Score es peor que el histórico. El hallazgo sigue siendo
+de desarrollo porque el periodo ya fue observado.
+
+\section{Robustez temporal rolling-origin}
+
+Los cuatro folds contienen 169 ventanas OOS: 49 en 2023, 49 en 2024, 49 en 2025 y
+22 en 2026-H1. Los cuatro modelos se recalibran en cada origen con idénticos
+hiperparámetros. Todos los starts publicados cumplen convergencia y estacionariedad.
+
+\begin{table}[ht]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Modelo & CRPS pooled & Energy pooled & Variogram pooled & Victorias CRPS \\
+\midrule
+Student-t & 0.020858 & 0.100672 & 0.642320 & 2/4 \\
+Gaussiano & 0.020935 & 0.100850 & 0.663707 & 1/4 \\
+Histórico EWMA & 0.020969 & 0.101302 & 0.654289 & 1/4 \\
+MM & 0.020972 & 0.101139 & 0.657408 & 0/4 \\
+\bottomrule
+\end{tabular}
+\caption{Evaluación rolling-origin expansiva; menor score es mejor.}
+\end{table}
+
+El contraste primario pooled CRPS MM menos Gaussiano se estima en +0.000036.
+Su IC95 va de -0.000041 a 0.000118 y el p Holm es 0.682. Student-$t$ supera a MM
+en CRPS: diferencia +0.000114, IC95 de 0.000058 a 0.000183 y p Holm de 0.004.
+MM sí mejora al histórico en Energy Score y al Gaussiano en Variogram Score. Por
+tanto, la conclusión depende de la propiedad distributiva y no existe superioridad
+general de MM.
+
+\section{Robustez frente a iliquidez}
+
+Como sensibilidad separada, se congeló antes de recalibrar una regla que conserva
+activos con tasa de retornos cero IS no mayor a 3\% y racha IS no mayor a cinco.
+La regla excluye AGUAS-A, ANDINA-B, ITAUCL y PARAUCO y deja 11 activos. Ninguna
+métrica OOS interviene en la selección; una prueba automatizada muta esas columnas y
+exige que la decisión permanezca invariante. El universo principal de 15 activos no
+se reemplaza.
+
+\begin{table}[ht]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Modelo & CRPS líquido & Energy líquido & Rango completo & Rango líquido \\
+\midrule
+Student-$t$ & 0.021250 & 0.087987 & 1 & 1 \\
+Gaussiano & 0.021290 & 0.088061 & 2 & 2 \\
+MM & 0.021360 & 0.088244 & 4 & 3 \\
+Histórico EWMA & 0.021365 & 0.088281 & 3 & 4 \\
+\bottomrule
+\end{tabular}
+\caption{Sensibilidad en 11 activos. Los niveles entre universos de distinta
+dimensión no son directamente comparables; el rango es interno a cada universo.}
+\end{table}
+
+MM supera al histórico líquido por solo $4\times10^{-6}$ de CRPS, sin evidencia
+estadística, mientras Student-$t$ y Gaussiano conservan los dos primeros lugares.
+MM-MinVariance obtiene Sharpe 1.748
+y drawdown $-12.98\%$, frente a 1.959 y $-13.80\%$ con 15 activos. Su intervalo
+bootstrap 95\% contra Equal Weight walk-forward es $[-0.165,\,0.428]$ e incluye cero.
+La reducción del drawdown coincide con una caída general de Sharpe: el filtro no
+demuestra una mejora económica ni cambia la conclusión principal.
+
+\section{Reglas de interpretación}
+
+MM solo se declarará superior si mejora scores propios fuera de muestra, mantiene
+cobertura de cola razonable y produce una mejora económica neta cuyo intervalo de
+incertidumbre sea compatible con la afirmación. Un resultado negativo también es un
+resultado de investigación válido.
+
+Los artefactos previos a esta versión son legacy: cambió el gradiente, la escala de
+momentos, el término de covarianza, el criterio de convergencia, el EWMA y los
+benchmarks. Por ello sus valores numéricos no se mezclan con una nueva corrida.
+
+\section{Reproducibilidad}
+
+Cada corrida final contiene configuración, versiones, hash de código y SHA-256 de
+artefactos. La suite automatizada verifica gradientes, monotonía de $G$, composición
+de retornos, parametrización de benchmarks, scores, restricciones de portafolio y
+ausencia de look-ahead en el motor walk-forward y en el filtro de liquidez, agregación
+de pérdidas pareadas, folds rolling-origin, ajuste Holm y selección de starts
+estacionarios. Los 45 tests
+verdes prueban contratos de
+software; no prueba rentabilidad futura.
+
+Además, cada frontera del pipeline mantiene un manifiesto de linaje con hashes de
+entradas, código relevante y salidas. Transformación, MM, benchmarks, evaluación,
+portafolios y backtest se niegan a consumir un upstream cuyo contenido cambió. El
+snapshot final solo se crea si los nueve manifiestos, incluidas la descarga, la
+sensibilidad de liquidez y la robustez rolling-origin, permanecen vigentes; así se evita
+combinar silenciosamente escenarios nuevos con scores o decisiones anteriores.
+
+\Needspace{12\baselineskip}
+\small
+\begin{thebibliography}{99}
+\bibitem{hoyland2001} Høyland, K. y Wallace, S. W. (2001). Generating scenario trees for multistage decision problems. \textit{Management Science}, 47(2), 295--307.
+\bibitem{ponomareva2015} Ponomareva, K., Roman, D. y Date, P. (2015). An algorithm for moment-matching scenario generation with application to financial portfolio optimisation. \textit{European Journal of Operational Research}, 240(3), 678--687.
+\bibitem{contreras2018} Contreras, J. P., Bosch, P. y Herrera, M. (2018). Comment on ``An algorithm for moment-matching scenario generation with application to financial portfolio optimization''. \textit{European Journal of Operational Research}, 269(3), 1180--1184.
+\bibitem{mehrotra2013} Mehrotra, S. y Papp, D. (2013). Generating moment matching scenarios using optimization techniques. \textit{SIAM Journal on Optimization}, 23(2).
+\bibitem{gneiting2007} Gneiting, T. y Raftery, A. E. (2007). Strictly proper scoring rules, prediction, and estimation. \textit{JASA}, 102(477), 359--378.
+\bibitem{kupiec1995} Kupiec, P. H. (1995). Techniques for verifying the accuracy of risk measurement models. \textit{Journal of Derivatives}, 3(2), 73--84.
+\bibitem{christoffersen1998} Christoffersen, P. F. (1998). Evaluating interval forecasts. \textit{International Economic Review}, 39(4), 841--862.
+\bibitem{ledoitwolf2004} Ledoit, O. y Wolf, M. (2004). A well-conditioned estimator for large-dimensional covariance matrices. \textit{Journal of Multivariate Analysis}, 88(2), 365--411.
+\bibitem{lopez2016} López de Prado, M. (2016). Building diversified portfolios that outperform out-of-sample. \textit{Journal of Portfolio Management}, 42(4), 59--69.
+\bibitem{rockafellar2000} Rockafellar, R. T. y Uryasev, S. (2000). Optimization of conditional value-at-risk. \textit{Journal of Risk}, 2(3), 21--41.
+\bibitem{lesmond1999} Lesmond, D. A., Ogden, J. P. y Trzcinka, C. A. (1999). A new estimate of transaction costs. \textit{Review of Financial Studies}, 12(5), 1113--1141.
+\bibitem{diebold1995} Diebold, F. X. y Mariano, R. S. (1995). Comparing predictive accuracy. \textit{Journal of Business \& Economic Statistics}, 13(3), 253--263.
+\bibitem{kunsch1989} Künsch, H. R. (1989). The jackknife and the bootstrap for general stationary observations. \textit{The Annals of Statistics}, 17(3), 1217--1241.
+\bibitem{holm1979} Holm, S. (1979). A simple sequentially rejective multiple test procedure. \textit{Scandinavian Journal of Statistics}, 6(2), 65--70.
+\bibitem{tashman2000} Tashman, L. J. (2000). Out-of-sample tests of forecasting accuracy: an analysis and review. \textit{International Journal of Forecasting}, 16(4), 437--450.
+\bibitem{hewamalage2023} Hewamalage, H., Ackermann, K. y Bergmeir, C. (2023). Forecast evaluation for data scientists: common pitfalls and best practices. \textit{Data Mining and Knowledge Discovery}, 37, 788--832.
+\end{thebibliography}
+\normalsize
+
+\end{document}

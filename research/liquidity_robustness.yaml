@@ -1,0 +1,18 @@
+# Experimento de sensibilidad de liquidez. No modifica el universo principal.
+experiment_id: liquidity_is_filter_v1
+research_status: development_robustness
+primary_universe_unchanged: true
+
+selection:
+  sample: in_sample_only
+  uses_oos: false
+  max_zero_return_rate_is: 0.03
+  max_consecutive_zero_returns_is: 5
+  min_assets: 8
+
+comparison:
+  primary_score: mean_crps
+  warning: >-
+    Los niveles de score de universos con distinta dimension no son directamente
+    comparables; se interpreta principalmente el ranking de modelos dentro de cada
+    universo y la estabilidad economica del backtest.

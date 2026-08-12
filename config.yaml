@@ -1,0 +1,134 @@
+# Configuracion principal de la investigacion independiente MM
+
+assets:
+  - AGUAS-A.SN
+  - ANDINA-B.SN
+  - BCI.SN
+  - BSANTANDER.SN
+  - CAP.SN
+  - CENCOMALLS.SN
+  - CMPC.SN
+  - ENELCHILE.SN
+  - ENTEL.SN
+  - FALABELLA.SN
+  - ITAUCL.SN
+  - MALLPLAZA.SN
+  - PARAUCO.SN
+  - RIPLEY.SN
+  - SQM-B.SN
+
+asset_labels:
+  - AGUAS-A
+  - ANDINA-B
+  - BCI
+  - BSANTANDER
+  - CAP
+  - CENCOMALLS
+  - CMPC
+  - ENELCHILE
+  - ENTEL
+  - FALABELLA
+  - ITAUCL
+  - MALLPLAZA
+  - PARAUCO
+  - RIPLEY
+  - SQM-B
+
+data:
+  start_train: "2020-01-02"
+  end_train: "2023-12-31"
+  start_oos: "2024-01-02"
+  end_oos: "2026-06-11"  # fin exclusivo del proveedor
+  H: 5
+  min_coverage: 0.95
+  ffill_limit_days: 2
+  exclude_imputed_return_endpoints: true
+  max_zero_return_rate: 0.03
+  max_consecutive_zero_returns: 5
+
+mm:
+  N_scenarios: 500
+  bcd_max_iter: 150
+  tol: 1.0e-5
+  min_iter: 2
+  convergence_patience: 3
+  n_starts: 5
+  early_stop_F: null
+  seed: 123
+  warm_noise: 0.15
+  update_mode: joint_lbfgs
+  # SciPy escala ftol contra max(|F|,1); F es ~1e-7, por eso 1e-9 era laxo.
+  x_inner_max_iter: 500
+  x_ftol: 1.0e-12
+  x_gtol: 1.0e-7
+  x_maxls: 40
+  x_stationarity_tol: 1.0e-4
+  p_stationarity_tol: 1.0e-4
+  p_solver: mirror_descent
+  p_inner_max_iter: 50
+  p_step_scale: 1.0
+  p_inner_tol: 1.0e-8
+  start_strategy: independent
+  strict_solver: true
+  acceptance_tol: 1.0e-10
+  moment_weights:
+    k1: 2.0
+    k2: 1.5
+    k3: 0.5
+    k4: 0.3
+  moment_scale_mode: volatility_power
+  moment_scale_floor: 1.0e-6
+  cov_weight: 0.05
+  cov_normalize: true
+  cov_scale_floor: 0.001
+  cov_offdiag_only: true
+  covariance_shrinkage: 0.10
+  entropy_lambda: 1.0e-5
+  # Retornos H=5 rolling generan una observacion por dia. Once semanas son
+  # 55 filas: lambda = 0.5^(1/55) = 0.987476...
+  ewma_half_life_weeks: 11.0
+  observations_per_week: 5.0
+
+benchmarks:
+  N_scenarios: 10000
+  seed: 42
+  student_t_df: 6.0
+  include:
+    - gaussian_terminal
+    - student_t_terminal
+    - historical_weighted
+
+# Compatibilidad temporal con scripts antiguos; se retirara tras migrarlos.
+wiener:
+  N_scenarios: 10000
+  seed: 42
+
+portfolio:
+  max_weight: 0.25
+  alpha_cvar: 0.05
+  n_frontier: 30
+  rf: 0.0
+  l2_penalty: 0.01
+  transaction_cost_bps: 20.0
+
+evaluation:
+  stride: 5
+  bootstrap_samples: 2000
+  bootstrap_block_size: 20
+  # Inferencia de scoring rules sobre ventanas H=5 no solapadas.
+  # Cuatro ventanas equivalen aproximadamente a 20 sesiones bursatiles.
+  score_bootstrap_samples: 5000
+  score_bootstrap_block_size: 4
+  score_bootstrap_confidence: 0.95
+  score_multiple_testing: holm
+  energy_pair_samples: 100000
+  seed: 20260809
+  status: development_validation
+  primary_score: crps
+  rebalance_frequency: quarterly
+
+paths:
+  figures: outputs/figures
+  tables: outputs/tables
+  data_raw: outputs
+  runs: outputs/runs

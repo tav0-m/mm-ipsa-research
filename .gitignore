@@ -1,0 +1,41 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+.DS_Store
+tmp/
+
+# Datos y artefactos derivados: se regeneran desde configuración + manifiesto.
+outputs/*
+!outputs/LEGACY_RESULTS.md
+
+# Artefactos de compilacion; se publica solo el informe final.
+research/build/*
+!research/build/MM_Research_Report.pdf
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+
+# Material historico/local anterior a la investigacion independiente.
+AGENTS.md
+CLAUDE.md
+Tesis_Gustavo_Chuquiviguel_actualizada.tex
+UDP_logo.jpg
+analisis_corrida_MM.docx
+docs_recomendaciones_tesis.md
+docs_resultados_corrida_20260613.md
+latex_overleaf_package/
+patch_notes.md
+robustness_multistart.py
+sensitivity.py
+generate_plots.py
+research/RESULTS_20260809.md
