@@ -21,6 +21,8 @@ from scipy.optimize import minimize
 
 
 class ObjectiveProtocol(Protocol):
+    """Contrato minimo que el solver requiere de una funcion objetivo MM."""
+
     @property
     def N(self) -> int: ...
 

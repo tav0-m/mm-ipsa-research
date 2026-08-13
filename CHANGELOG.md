@@ -2,6 +2,72 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.6.0] - 2026-08-13
+
+Release de rigor metodológico. Los datos crudos no cambian —la descarga se
+revalida por hash sin consultar al proveedor—, de modo que toda diferencia en los
+resultados proviene de correcciones de método.
+
+### Corregido
+
+- **Los grados de libertad del Student-t se estiman por verosimilitud de perfil**
+  en lugar de imponerse como la constante `6.0`. Se reestiman en cada origen del
+  rolling-origin; el rango obtenido es 12 a 25. Tres conclusiones de v0.5.0
+  dejan de sostenerse: la ventaja de MM en Energy Score frente al histórico y sus
+  desventajas en Variogram Score frente a Student-t e histórico.
+- **El ancho de bloque del bootstrap lo elige Politis-White (2004)** con la
+  corrección de Patton, Politis y White (2009), sobre autocovarianzas agrupadas
+  dentro de folds, en lugar de la constante `4` justificada por analogía.
+- **La contracción de covarianza usa la intensidad óptima de Ledoit-Wolf**
+  (`0.0612` estimado) en lugar de la constante `0.10`, que contradecía el propio
+  protocolo al no provenir de validación temporal.
+- **Los portafolios se contrastan contra el baseline de su mismo diseño de
+  evaluación.** Antes toda estrategia se comparaba contra `WF_EqualWeight`, de
+  modo que las carteras estáticas competían contra un baseline recalibrado
+  trimestralmente y H4 no era interpretable. El efecto del rebalanceo se reporta
+  ahora como familia separada.
+- Holm se aplica a los contrastes de portafolio, que antes no recibían ninguna
+  corrección de multiplicidad.
+- `_feasible_weights` verifica el tope por activo tras renormalizar, en lugar de
+  devolver en silencio una cartera infactible.
+- `simulate_strategy` falla si una fecha de rebalanceo no existe en el índice, en
+  lugar de omitirla sin dejar rastro.
+- `nearest_psd` usa un piso de autovalores relativo al mayor; el piso absoluto
+  `1e-12` no regularizaba matrices con entradas de orden `1e-4`.
+- Las banderas de calidad de datos se calculan por segmento; la tasa agregada
+  ocultaba deterioros concentrados en la ventana de evaluación.
+- `portfolio_diagnostics` resta la tasa libre de riesgo, igual que
+  `maximum_sharpe`.
+- Los diagnósticos reportan exceso de curtosis, de modo que el cero corresponde a
+  colas gaussianas.
+- `evaluate_scenarios_detailed` exige que los identificadores conserven el orden
+  cronológico al pasar a texto, supuesto del que depende el bootstrap por bloques.
+
+### Añadido
+
+- Model Confidence Set de Hansen, Lunde y Nason (2011) en el análisis principal y
+  en rolling-origin.
+- Contraste de Diebold-Mariano con varianza HAC de Newey-West y corrección de
+  Harvey, Leybourne y Newbold, como ruta de inferencia independiente del
+  bootstrap. Coincide con el bootstrap en los nueve contrastes.
+- Diagnósticos de calibración por transformada integral de probabilidad, con
+  soporte igualado entre modelos. Bajo especificación correcta un ensemble de 500
+  escenarios rechaza uniformidad cerca del 27% de las veces frente al 5% nominal,
+  por lo que sin igualar se mediría resolución en lugar de calibración.
+- Análisis de sensibilidad del ancho de bloque sobre una grilla configurable.
+- Artefactos auditables `student_t_df_estimation.json`,
+  `student_t_df_by_fold.csv`, `model_confidence_set.csv`,
+  `calibration_pit_by_asset.csv` y `calibration_pit_summary.csv`, incorporados al
+  linaje.
+- Cobertura de pruebas de 49 a 159, incluidos módulos antes sin tests directos
+  (`pipeline.py`, `verification.py`) y casos degenerados del solver BCD.
+
+### Eliminado
+
+- Bloque `wiener` de la configuración y alias `wiener_scenarios`, ambos sin
+  consumidores.
+- Dependencia `seaborn` del lockfile, no declarada ni importada.
+
 ## [0.5.0] - 2026-08-12
 
 ### Cambiado

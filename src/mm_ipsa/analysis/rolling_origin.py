@@ -18,7 +18,7 @@ from mm_ipsa.evaluation.scoring import evaluate_scenarios_detailed
 from mm_ipsa.mm.bcd import BCDSolver
 from mm_ipsa.mm.objective import MMObjective
 from mm_ipsa.mm.targets import _ewma_weights, compute_targets
-from mm_ipsa.models.benchmarks import generate_benchmarks
+from mm_ipsa.models.benchmarks import generate_benchmarks, resolve_student_t_df
 
 
 class RollingMetadata(TypedDict):
@@ -212,6 +212,8 @@ def run_rolling_origin(
     calibration_rows: list[dict[str, object]] = []
     fold_score_frames: list[pd.DataFrame] = []
     observation_frames: list[pd.DataFrame] = []
+    student_t_rows: list[dict[str, float | str]] = []
+    calibration_frames: list[pd.DataFrame] = []
 
     for fold_index, fold in enumerate(experiment_cfg["folds"]):
         fold_id = str(fold["fold_id"])
@@ -243,6 +245,18 @@ def run_rolling_origin(
         historical_weights = _ewma_weights(
             len(training_terminal), target_cfg["decay_lambda"]
         )
+        # nu se reestima en cada origen con la ventana de entrenamiento del
+        # fold. Fijarlo una sola vez introduciria informacion de toda la
+        # muestra en un control que se compara fold a fold.
+        student_t_df, student_t_report = resolve_student_t_df(
+            benchmark_cfg,
+            training_terminal.to_numpy(),
+            moments[0],
+            covariance,
+            historical_weights,
+        )
+        student_t_report["fold_id"] = fold_id
+        student_t_rows.append(student_t_report)
         models = {
             "MM": (mm_scenarios, mm_probabilities),
             **generate_benchmarks(
@@ -252,9 +266,21 @@ def run_rolling_origin(
                 historical_weights,
                 n_scenarios=int(benchmark_cfg["N_scenarios"]),
                 seed=int(benchmark_cfg["seed"]) + fold_index * 1_000,
-                student_t_df=float(benchmark_cfg["student_t_df"]),
+                student_t_df=student_t_df,
             ),
         }
+
+        from mm_ipsa.pipeline import _calibration_frames
+
+        _, fold_calibration = _calibration_frames(
+            main_cfg,
+            models,
+            evaluation_terminal.to_numpy(),
+            labels,
+            int(main_cfg["evaluation"]["seed"]) + fold_index * 7_000 + 600_000,
+        )
+        fold_calibration.insert(0, "fold_id", fold_id)
+        calibration_frames.append(fold_calibration)
 
         per_model: list[pd.DataFrame] = []
         for model_index, (model_name, (scenarios, probabilities)) in enumerate(models.items()):
@@ -343,20 +369,40 @@ def run_rolling_origin(
         focal_model="MM",
         benchmark_models=list(main_cfg["benchmarks"]["include"]),
         block_size=int(inference_cfg["block_size"]),
+        block_size_mode=str(inference_cfg.get("block_size_mode", "auto")),
         samples=int(inference_cfg["bootstrap_samples"]),
         confidence_level=float(inference_cfg["confidence_level"]),
         seed=int(main_cfg["evaluation"]["seed"]) + 900_000,
         inference_status=str(experiment_cfg["experiment"]["status"]),
     )
+    from mm_ipsa.pipeline import _model_confidence_sets
+
+    confidence_sets = _model_confidence_sets(
+        observations_all,
+        block_sizes=dict(
+            zip(differences["metric"], differences["block_size"], strict=False)
+        ),
+        alpha=1.0 - float(inference_cfg["confidence_level"]),
+        samples=int(inference_cfg["bootstrap_samples"]),
+        seed=int(main_cfg["evaluation"]["seed"]) + 950_000,
+        group_column="fold_id",
+    )
     stability = _stability_summary(fold_scores_all)
 
     definitions.to_csv(output / "fold_definitions.csv", index=False)
     calibrations.to_csv(output / "fold_calibration.csv", index=False)
+    pd.DataFrame(student_t_rows).to_csv(
+        output / "student_t_df_by_fold.csv", index=False
+    )
     fold_scores_all.to_csv(output / "probabilistic_scores_by_fold.csv", index=False)
     observations_all.to_csv(output / "probabilistic_scores_by_observation.csv", index=False)
     pooled_scores.to_csv(output / "probabilistic_scores_pooled.csv", index=False)
     differences.to_csv(output / "probabilistic_score_differences_pooled.csv", index=False)
     stability.to_csv(output / "model_stability_summary.csv", index=False)
+    confidence_sets.to_csv(output / "model_confidence_set.csv", index=False)
+    pd.concat(calibration_frames, ignore_index=True).to_csv(
+        output / "calibration_pit_by_fold.csv", index=False
+    )
 
     metadata: RollingMetadata = {
         "experiment_id": str(experiment_cfg["experiment"]["id"]),

@@ -22,6 +22,7 @@ class LineageValidation(TypedDict):
 
 
 def sha256_file(path: str | Path) -> str:
+    """Digest SHA-256 leido por bloques para artefactos de cualquier tamano."""
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -129,6 +130,7 @@ def validate_lineage(manifest_path: str | Path, *, root: str | Path) -> LineageV
 
 
 def assert_lineage_current(manifest_path: str | Path, *, root: str | Path) -> None:
+    """Falla si el manifiesto no refleja el estado actual de entradas y salidas."""
     result = validate_lineage(manifest_path, root=root)
     if not result["valid"]:
         details = ", ".join(result["errors"])

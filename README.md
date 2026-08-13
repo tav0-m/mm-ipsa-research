@@ -10,20 +10,24 @@ Plataforma de investigación cuantitativa independiente para estudiar generació
 
 La pregunta no es si MM-BCD reproduce media, covarianza y momentos superiores —lo hace con alta precisión—, sino si esa calibración mejora pronósticos probabilísticos y decisiones económicas fuera de muestra frente a controles Gaussian, Student-t e histórico EWMA.
 
-**Versión pública actual:** `v0.5.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
+**Versión pública actual:** `v0.6.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
 
 ## Resultado principal
 
-La complejidad no produjo una superioridad general. En validación rolling-origin con cuatro folds, 169 ventanas no solapadas de cinco días y recalibración completa en cada origen:
+La complejidad no produjo una superioridad general. En validación rolling-origin con cuatro folds, 169 ventanas no solapadas de cinco días y recalibración completa de todos los modelos en cada origen:
 
 | Modelo | CRPS pooled | Energy Score | Variogram Score | Folds ganados en CRPS |
 |---|---:|---:|---:|---:|
-| Student-t | **0.020858** | **0.100672** | **0.642320** | 2/4 |
-| Gaussiano | 0.020935 | 0.100850 | 0.663707 | 1/4 |
-| Histórico EWMA | 0.020969 | 0.101302 | 0.654289 | 1/4 |
-| MM-BCD | 0.020972 | 0.101139 | 0.657408 | 0/4 |
+| Student-t | **0.020904** | **0.100780** | **0.654249** | 3/4 |
+| Gaussiano | 0.020934 | 0.100845 | 0.661880 | 1/4 |
+| Histórico EWMA | 0.020969 | 0.101302 | 0.654289 | 0/4 |
+| MM-BCD | 0.020990 | 0.101292 | 0.654383 | 0/4 |
 
-MM frente al Gaussiano en CRPS obtuvo una diferencia de `+0.000036`, IC95 `[-0.000041, 0.000118]` y `p_Holm=0.682`: no hay diferencia estadísticamente distinguible. Student-t sí supera a MM en CRPS pooled después de Holm (`p_Holm=0.004`). MM mejora al histórico en Energy Score y al Gaussiano en Variogram, mostrando que el resultado depende de la propiedad distributiva evaluada.
+MM frente al Gaussiano en CRPS obtuvo una diferencia de `+0.000056`, IC95 `[-0.000019, 0.000138]` y `p_Holm=0.595`: no hay diferencia estadísticamente distinguible. El Model Confidence Set al 95% deja a MM **fuera** en CRPS y Energy Score, y **dentro** en Variogram Score, donde además supera al Gaussiano de forma distinguible (`-0.007497`, `p_Holm=0.004`).
+
+El diagnóstico de calibración identifica el mecanismo: MM alcanza la mejor razón de dispersión de los cuatro modelos (`0.995` contra un ideal de `1.000`) y a la vez el histograma PIT menos uniforme. Ajustar los cuatro primeros momentos no equivale a ajustar la distribución, y las reglas de scoring propias evalúan la forma completa.
+
+> **Corrección metodológica respecto de v0.5.0.** Los grados de libertad del Student-t eran una constante no estimada (`6.0`). Al estimarlos por verosimilitud en cada origen —el rango resultante es 12 a 25— tres conclusiones de v0.5.0 dejan de sostenerse: la ventaja de MM en Energy Score frente al histórico y sus desventajas en Variogram frente a Student-t e histórico. El detalle está en [research/RESULTS_20260813.md](research/RESULTS_20260813.md).
 
 ![Estabilidad temporal de CRPS](docs/assets/rolling-origin-crps.png)
 
@@ -50,10 +54,12 @@ flowchart LR
 - Datos locales actuales: 2020-01-02 a 2026-06-10.
 - Horizonte: retorno terminal compuesto a cinco días.
 - Rolling-origin expansivo: 2023, 2024, 2025 y 2026-H1.
-- Todos los modelos se recalibran en cada fold usando solo datos anteriores.
-- Inferencia: moving-block bootstrap de 5.000 muestras; bloques de cuatro ventanas; corrección Holm sobre nueve contrastes.
+- Todos los modelos se recalibran en cada fold usando solo datos anteriores, incluidos los grados de libertad del Student-t y la contracción de covarianza.
+- Inferencia: moving-block bootstrap de 5.000 muestras con ancho de bloque elegido por Politis-White, corrección Holm sobre nueve contrastes y Diebold-Mariano con varianza HAC como verificación independiente.
+- Model Confidence Set al 95% para identificar qué modelos no son descartables como óptimos.
+- Diagnósticos de calibración PIT con soporte igualado entre modelos.
 - Sensibilidad separada de liquidez seleccionada exclusivamente con métricas in-sample.
-- 49 pruebas automatizadas, Ruff y Pyright sin errores, y nueve etapas de linaje verificadas.
+- 159 pruebas automatizadas, Ruff y Pyright sin errores, y nueve etapas de linaje verificadas.
 
 El protocolo completo está en [research/PROTOCOL.md](research/PROTOCOL.md) y los cortes rolling-origin están congelados en [research/rolling_origin.yaml](research/rolling_origin.yaml).
 
@@ -64,7 +70,7 @@ src/mm_ipsa/
 ├── analysis/       # rolling-origin, liquidez y activos públicos
 ├── backtest/       # simulación walk-forward y costos
 ├── data/           # descarga, calidad y transformación temporal
-├── evaluation/     # scoring rules e inferencia pareada
+├── evaluation/     # scoring rules, inferencia pareada, MCS y calibración
 ├── mm/             # objetivo, gradientes, BCD y diagnósticos
 ├── models/         # controles Gaussian, Student-t e histórico EWMA
 ├── portfolio/      # optimización y baselines robustos
@@ -123,7 +129,8 @@ Un test verde prueba contratos de software y trazabilidad; no prueba rentabilida
 
 - [Informe de investigación en PDF](research/build/MM_Research_Report.pdf)
 - [Fuente LaTeX del informe](research/MM_Research_Report.tex)
-- [Resultados actuales](research/RESULTS_20260810.md)
+- [Resultados actuales](research/RESULTS_20260813.md)
+- [Resultados de v0.5.0, superados](research/RESULTS_20260810.md)
 - [Guía de implementación](research/IMPLEMENTATION_GUIDE.md)
 - [Referencias](research/REFERENCES.md)
 - [Ficha pública](docs/index.html)

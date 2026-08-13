@@ -146,7 +146,30 @@ def build_returns(
     max_zero_run_limit = int(data_cfg.get("max_consecutive_zero_returns", len(daily)))
     quality["zero_rate_flag"] = quality["zero_return_rate_full"] > threshold
     quality["zero_run_flag"] = quality["max_zero_run_full"] > max_zero_run_limit
+    # Banderas por segmento. La tasa agregada sobre toda la muestra diluye un
+    # deterioro concentrado dentro de la ventana de evaluacion, y los retornos
+    # cero son trivialmente predecibles: comprimen los scores de TODOS los
+    # modelos justo donde la calidad del generador de escenarios importa mas.
+    # Las columnas OOS son estrictamente diagnosticas; usarlas para excluir
+    # activos introduciria la fuga temporal que el protocolo prohibe.
+    for segment in ("is", "oos"):
+        quality[f"zero_rate_flag_{segment}"] = (
+            quality[f"zero_return_rate_{segment}"] > threshold
+        )
+        quality[f"zero_run_flag_{segment}"] = (
+            quality[f"max_zero_run_{segment}"] > max_zero_run_limit
+        )
+    quality["deteriorates_out_of_sample"] = (
+        quality["zero_rate_flag_oos"] | quality["zero_run_flag_oos"]
+    ) & ~(quality["zero_rate_flag_is"] | quality["zero_run_flag_is"])
     quality.to_csv(out_path / "data_quality_returns.csv", index=False)
+
+    deteriorating = quality.loc[quality["deteriorates_out_of_sample"], "asset"]
+    if not deteriorating.empty:
+        print(
+            "  [warn] calidad limpia in-sample pero degradada fuera de muestra "
+            f"(solo diagnostico, no excluye): {', '.join(deteriorating)}"
+        )
     high_zero = zero_rates[zero_rates > threshold]
     if not high_zero.empty:
         detail = ", ".join(f"{key}={value:.1%}" for key, value in high_zero.items())
@@ -180,6 +203,8 @@ def build_returns(
         "exclude_imputed_return_endpoints": exclude_imputed,
         "rows_dropped_for_imputed_endpoints": dropped_endpoint_rows,
         "staleness_policy": "warn_only_no_automatic_asset_exclusion",
+        "quality_flags_computed_per_segment": True,
+        "out_of_sample_flags_are_diagnostic_only": True,
         "end_train_inclusive": str(end_train.date()),
         "start_oos_inclusive": str(start_oos.date()),
         "daily_train_rows": len(daily_train),

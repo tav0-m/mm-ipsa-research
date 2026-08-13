@@ -29,7 +29,7 @@ Como prueba de estabilidad retrospectiva se define `rolling_origin_expanding_v1`
 2. Fallar si la cobertura raw cae bajo el umbral configurado.
 3. Limitar `forward fill`; no usar `backfill`.
 4. Calcular retornos con `fill_method=None`.
-5. Reportar retornos cero como proxy de iliquidez/precio stale, sin asumir automáticamente que son errores.
+5. Reportar retornos cero como proxy de iliquidez/precio stale, sin asumir automáticamente que son errores. Las banderas de calidad se calculan por segmento, porque la tasa agregada sobre toda la muestra diluye un deterioro concentrado dentro de la ventana de evaluación y los retornos cero son trivialmente predecibles. Las columnas fuera de muestra son estrictamente diagnósticas: usarlas para excluir activos introduciría fuga temporal.
 6. Mantener universo fijo para el experimento actual y declarar que esto no elimina survivorship bias.
 7. Yahoo Finance es una fuente conveniente, no un feed institucional; una fase posterior debe reconciliar eventos corporativos con una segunda fuente.
 
@@ -57,8 +57,24 @@ La convergencia y la selección multi-start se realizan sobre G. El bloque compl
 Todos reciben la misma media, covarianza, horizonte H y ponderación temporal:
 
 - Gaussian terminal multivariado.
-- Student-t terminal con grados de libertad prefijados y covarianza parametrizada.
+- Student-t terminal con covarianza exactamente parametrizada (`S = Σ(ν−2)/ν`) y
+  grados de libertad **estimados**, no impuestos.
 - Distribución histórica EWMA sin ruido Monte Carlo.
+
+Los grados de libertad se estiman por verosimilitud de perfil dejando fijas media
+y covarianza en los mismos targets EWMA que recibe MM. Solo se ajusta el
+parámetro de cola: si se estimaran también los dos primeros momentos, el control
+dejaría de compartir el conjunto de información con MM y la comparación mediría
+una diferencia distinta de la que interesa. En rolling-origin se reestima en cada
+origen usando solo observaciones anteriores.
+
+Las ventanas terminales rolling se solapan, de modo que se trata de una
+pseudo-verosimilitud: el estimador es consistente como M-estimador, pero sus
+errores estándar nominales subestimarían la incertidumbre y no se reportan como
+inferencia.
+
+Hasta v0.5.0 este parámetro era la constante `6.0`, aplicada idéntica a quince
+activos con curtosis heterogénea. Estimarlo modificó tres conclusiones.
 
 ## 7. Sensibilidad de liquidez
 
@@ -70,11 +86,46 @@ Las métricas OOS pueden mostrarse como diagnóstico después de seleccionar, pe
 
 Métricas primarias: CRPS marginal y Energy Score multivariado. Secundarias: Variogram Score, error de correlación, VaR/ES y pruebas de Kupiec/Christoffersen. Las comparaciones se realizan sobre ventanas OOS no solapadas.
 
-Los scores se conservan por ventana y se comparan como pérdidas pareadas `MM − control`; valores negativos favorecen a MM. El contraste primario registrado es CRPS de MM contra Gaussian terminal. La dependencia remanente se trata con moving-block bootstrap de cuatro ventanas H=5, 5.000 remuestreos e IC95 básico centrado. Se aplica Holm conjuntamente a los nueve contrastes formados por tres scores y tres controles, por separado en el universo completo y en la sensibilidad líquida.
+Los scores se conservan por ventana y se comparan como pérdidas pareadas `MM − control`; valores negativos favorecen a MM. El contraste primario registrado es CRPS de MM contra Gaussian terminal. La dependencia remanente se trata con moving-block bootstrap de 5.000 remuestreos e IC95 básico centrado. Se aplica Holm conjuntamente a los nueve contrastes formados por tres scores y tres controles, por separado en el universo completo y en la sensibilidad líquida.
+
+El ancho de bloque lo determina el criterio de Politis y White (2004) con la
+corrección de Patton, Politis y White (2009), aplicado a las autocovarianzas
+agrupadas dentro de folds. Un ancho fijado por analogía puede quedar corto frente
+a la dependencia real, en cuyo caso el bootstrap subestima la varianza de la
+media y produce intervalos y p-valores anti-conservadores. Cuando el ancho
+requerido excede el largo del fold más corto, el remuestreo no puede reproducir
+esa dependencia y la fila queda marcada con `block_size_capped`.
+
+Como verificación independiente se reporta también un contraste de
+Diebold-Mariano con varianza HAC de Newey-West y corrección de muestra pequeña de
+Harvey, Leybourne y Newbold. Que ambas rutas coincidan indica que la conclusión
+no depende del mecanismo de remuestreo.
+
+Se construye además un Model Confidence Set al 95% según Hansen, Lunde y Nason
+(2011). Los contrastes pareados responden si MM difiere de cada control por
+separado; el MCS responde cuáles modelos no son descartables como óptimos, que es
+la pregunta que esta investigación plantea.
+
+La calibración se evalúa por transformada integral de probabilidad. El soporte se
+iguala entre modelos antes de contrastar uniformidad: bajo especificación
+correcta un ensemble de 500 escenarios rechaza cerca del 27% de las veces frente
+al 5% nominal, mientras que uno de 10.000 alcanza el nivel correcto, de modo que
+sin igualar se mediría resolución en lugar de calibración.
 
 En rolling-origin, el remuestreo mantiene cada bloque dentro de su fold: ningún bloque puede concatenar el final de un año con el inicio de otro. La media pooled pondera observaciones, mientras que el resumen de estabilidad reporta también rango y número de victorias por fold. Los hiperparámetros permanecen fijos entre folds.
 
 Portafolios: Equal Weight, inverse variance, HRP, mínima varianza regularizada, mínimo CVaR y máximo Sharpe regularizado. El backtest incluye deriva de pesos, turnover y costos explícitos. Los IC se calculan mediante moving-block bootstrap.
+
+Cada estrategia se contrasta contra el Equal Weight de su **mismo** diseño de
+evaluación. Comparar una cartera calibrada una sola vez contra un baseline que se
+recalibra cada trimestre mezcla dos efectos —el método de construcción y la
+política de rebalanceo— y hace que H4 no sea interpretable en ninguna dirección.
+El efecto del rebalanceo se reporta por separado, como su propia familia de
+contrastes, comparando cada versión walk-forward con su contraparte estática.
+
+Holm se aplica dentro de cada familia de contrastes de portafolio. Sin ese ajuste,
+afirmar que "algún portafolio mejora el Sharpe" sobre seis o más comparaciones
+simultáneas infla la probabilidad de un falso positivo.
 
 ## 9. Regla de publicación
 

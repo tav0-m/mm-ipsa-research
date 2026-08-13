@@ -39,6 +39,17 @@ def simulate_strategy(
     daily_returns = daily_returns.copy()
     daily_returns.index = dates
 
+    # Una fecha de rebalanceo ausente del indice se omitiria en silencio y la
+    # cartera conservaria la asignacion previa sin dejar rastro. Un desajuste de
+    # calendario -un feriado local, un reindexado- degradaria la estrategia sin
+    # que ninguna metrica lo delate, por lo que se exige coincidencia exacta.
+    unscheduled = sorted(date for date in schedule if date not in set(dates))
+    if unscheduled:
+        raise ValueError(
+            "Fechas de rebalanceo ausentes del indice de retornos: "
+            f"{[str(date.date()) for date in unscheduled]}"
+        )
+
     for date_value, row in daily_returns.iterrows():
         date = pd.Timestamp(str(date_value))
         turnover = cost = 0.0
@@ -102,6 +113,7 @@ def walk_forward_weights(
 
 
 def performance_metrics(wealth: pd.Series, execution: pd.DataFrame, annual_periods: int = 252) -> dict[str, float]:
+    """CAGR, volatilidad, Sharpe y drawdown a partir de la serie de riqueza neta."""
     returns = execution["net_return"].to_numpy(dtype=float)
     years = len(returns) / annual_periods
     cagr = float(wealth.iloc[-1] ** (1.0 / years) - 1.0) if years > 0 else np.nan
@@ -117,6 +129,15 @@ def performance_metrics(wealth: pd.Series, execution: pd.DataFrame, annual_perio
     }
 
 
+def _annualised_sharpe(returns: np.ndarray, annual_periods: int) -> float:
+    """Sharpe anualizado sin tasa libre de riesgo, con denominador protegido."""
+    return float(
+        np.mean(returns)
+        / max(float(np.std(returns, ddof=1)), 1e-15)
+        * np.sqrt(annual_periods)
+    )
+
+
 def moving_block_bootstrap_sharpe_difference(
     strategy_returns: np.ndarray,
     benchmark_returns: np.ndarray,
@@ -124,26 +145,60 @@ def moving_block_bootstrap_sharpe_difference(
     samples: int = 2000,
     seed: int = 0,
     annual_periods: int = 252,
+    confidence_level: float = 0.95,
 ) -> dict[str, float]:
-    """IC percentil del diferencial de Sharpe anualizado con bloques móviles."""
+    """IC percentil y p-valor del diferencial de Sharpe anualizado.
+
+    Las dos series se remuestrean con los MISMOS indices en cada replica, de
+    modo que la dependencia contemporanea entre estrategia y baseline se
+    conserva y el intervalo describe el diferencial, no dos series
+    independientes.
+
+    El p-valor usa la aproximacion bootstrap basica: la distribucion de
+    ``delta* - delta`` estima la del error de estimacion, y bajo H0 el
+    verdadero diferencial es cero.
+    """
     strategy = np.asarray(strategy_returns, dtype=float)
     benchmark = np.asarray(benchmark_returns, dtype=float)
     if strategy.shape != benchmark.shape or strategy.ndim != 1:
         raise ValueError("Las series deben ser vectores del mismo largo")
+    if not np.isfinite(strategy).all() or not np.isfinite(benchmark).all():
+        raise ValueError("Las series contienen valores no finitos")
     n = len(strategy)
     if not 1 <= block_size <= n:
         raise ValueError("block_size invalido")
+    if samples < 100:
+        raise ValueError("samples debe ser al menos 100")
+    if not 0.0 < confidence_level < 1.0:
+        raise ValueError("confidence_level debe pertenecer a (0, 1)")
+
+    observed = _annualised_sharpe(strategy, annual_periods) - _annualised_sharpe(
+        benchmark, annual_periods
+    )
     rng = np.random.default_rng(seed)
-    differences = []
-    for _ in range(samples):
+    differences = np.empty(samples, dtype=float)
+    for sample in range(samples):
         indices: list[int] = []
         while len(indices) < n:
             start = int(rng.integers(0, n - block_size + 1))
             indices.extend(range(start, start + block_size))
         idx = np.asarray(indices[:n])
-        s, b = strategy[idx], benchmark[idx]
-        sr_s = np.mean(s) / max(np.std(s, ddof=1), 1e-15)
-        sr_b = np.mean(b) / max(np.std(b, ddof=1), 1e-15)
-        differences.append((sr_s - sr_b) * np.sqrt(annual_periods))
-    low, median, high = np.quantile(differences, [0.025, 0.5, 0.975])
-    return {"ci_low": float(low), "median": float(median), "ci_high": float(high)}
+        differences[sample] = _annualised_sharpe(
+            strategy[idx], annual_periods
+        ) - _annualised_sharpe(benchmark[idx], annual_periods)
+
+    alpha = 1.0 - confidence_level
+    low, median, high = np.quantile(
+        differences, [alpha / 2.0, 0.5, 1.0 - alpha / 2.0]
+    )
+    centered = differences - observed
+    pvalue = (1.0 + float(np.sum(np.abs(centered) >= abs(observed)))) / (samples + 1.0)
+    return {
+        "sharpe_difference": observed,
+        "ci_low": float(low),
+        "median": float(median),
+        "ci_high": float(high),
+        "pvalue_raw": float(min(pvalue, 1.0)),
+        "bootstrap_samples": float(samples),
+        "block_size": float(block_size),
+    }

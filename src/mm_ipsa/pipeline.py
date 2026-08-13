@@ -44,6 +44,7 @@ PACKAGE_ROOT = ROOT / "src" / "mm_ipsa"
 
 
 def banner(message: str) -> None:
+    """Imprime un separador de etapa en la salida de progreso."""
     print(f"\n[step] {message}")
 
 
@@ -144,6 +145,7 @@ def _compute_targets(cfg: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray, pd.
 
 
 def step_download(cfg: dict):
+    """Descarga precios crudos y guarda mascara de disponibilidad y calidad."""
     banner("1/10 Ingestion y calidad de precios")
     _ensure_dirs(cfg)
     from mm_ipsa.data.download import download_prices
@@ -215,6 +217,7 @@ def step_reuse_download(cfg: dict):
 
 
 def step_transform(cfg: dict):
+    """Construye retornos diarios y terminales H, y separa entrenamiento de OOS."""
     banner("2/10 Retornos y split temporal")
     _ensure_dirs(cfg)
     from mm_ipsa.data.transform import build_returns
@@ -258,6 +261,7 @@ def step_transform(cfg: dict):
 
 
 def step_mm(cfg: dict):
+    """Calibra la distribucion discreta MM resolviendo el BCD multi-start."""
     banner("3/10 Calibracion Matching-Moment con BCD validado")
     _ensure_dirs(cfg)
     from mm_ipsa.mm.bcd import BCDSolver
@@ -346,16 +350,31 @@ def step_mm(cfg: dict):
 
 
 def step_benchmarks(cfg: dict):
+    """Genera los controles terminales con la misma media, covarianza y horizonte."""
     banner("4/10 Benchmarks terminales comparables")
     _ensure_dirs(cfg)
     from mm_ipsa.mm.targets import _ewma_weights
-    from mm_ipsa.models.benchmarks import generate_benchmarks
+    from mm_ipsa.models.benchmarks import generate_benchmarks, resolve_student_t_df
 
     transform_manifest = _require_stage(cfg, "transform")
     moments, covariance, _, terminal = _compute_targets(cfg)
     parameters = target_parameters(cfg["mm"])
     history_weights = _ewma_weights(len(terminal), parameters["decay_lambda"])
     benchmark_cfg = cfg["benchmarks"]
+    student_t_df, student_t_report = resolve_student_t_df(
+        benchmark_cfg,
+        terminal.to_numpy(),
+        moments[0],
+        covariance,
+        history_weights,
+    )
+    out = Path(cfg["paths"]["data_raw"])
+    (out / "student_t_df_estimation.json").write_text(
+        json.dumps(student_t_report, indent=2), encoding="utf-8"
+    )
+    print(
+        f"  student_t: nu={student_t_df:.3f} (modo={student_t_report['student_t_df_mode']})"
+    )
     models = generate_benchmarks(
         moments,
         covariance,
@@ -363,19 +382,13 @@ def step_benchmarks(cfg: dict):
         history_weights,
         n_scenarios=int(benchmark_cfg["N_scenarios"]),
         seed=int(benchmark_cfg["seed"]),
-        student_t_df=float(benchmark_cfg["student_t_df"]),
+        student_t_df=student_t_df,
     )
-    out = Path(cfg["paths"]["data_raw"])
     labels = cfg["asset_labels"]
     for name, (scenarios, probabilities) in models.items():
         np.save(out / f"{name}_scenarios.npy", scenarios)
         np.save(out / f"{name}_probabilities.npy", probabilities)
         pd.DataFrame(scenarios, columns=labels).to_csv(out / f"{name}_scenarios.csv", index=False)
-    # Alias transitorio: el antiguo Wiener era una normal terminal menos comparable.
-    np.save(out / "wiener_scenarios.npy", models["gaussian_terminal"][0])
-    pd.DataFrame(models["gaussian_terminal"][0], columns=labels).to_csv(
-        out / "wiener_scenarios.csv", index=False
-    )
     print("  [ok] " + ", ".join(f"{name}={values[0].shape}" for name, values in models.items()))
     H = int(cfg["data"]["H"])
     benchmark_outputs: list[Path] = []
@@ -391,8 +404,17 @@ def step_benchmarks(cfg: dict):
             out / "daily_returns.csv",
             out / f"hist_terminal_returns_H{H}.csv",
         ],
-        [*benchmark_outputs, out / "targets_moments.csv", out / "targets_cov.csv"],
-        {"models": list(cfg["benchmarks"]["include"])},
+        [
+            *benchmark_outputs,
+            out / "targets_moments.csv",
+            out / "targets_cov.csv",
+            out / "student_t_df_estimation.json",
+        ],
+        {
+            "models": list(cfg["benchmarks"]["include"]),
+            "student_t_df": float(student_t_df),
+            "student_t_df_mode": str(student_t_report["student_t_df_mode"]),
+        },
     )
     return models
 
@@ -414,6 +436,7 @@ def _load_models(cfg: dict) -> dict[str, tuple[np.ndarray, np.ndarray]]:
 
 
 def step_evaluate(cfg: dict):
+    """Puntua todos los modelos OOS y produce contrastes, MCS y calibracion."""
     banner("5/10 Evaluacion probabilistica OOS")
     _ensure_dirs(cfg)
     from mm_ipsa.evaluation.comparison import compare_focal_model
@@ -451,15 +474,41 @@ def step_evaluate(cfg: dict):
         focal_model="MM",
         benchmark_models=list(cfg["benchmarks"]["include"]),
         block_size=int(cfg["evaluation"]["score_bootstrap_block_size"]),
+        block_size_mode=str(
+            cfg["evaluation"].get("score_bootstrap_block_size_mode", "auto")
+        ),
         samples=int(cfg["evaluation"]["score_bootstrap_samples"]),
         confidence_level=float(cfg["evaluation"]["score_bootstrap_confidence"]),
         seed=int(cfg["evaluation"]["seed"]),
         inference_status=str(cfg["evaluation"]["status"]),
     )
+    confidence_sets = _model_confidence_sets(
+        observation_all,
+        block_sizes=dict(
+            zip(
+                score_differences["metric"],
+                score_differences["block_size"],
+                strict=False,
+            )
+        ),
+        alpha=1.0 - float(cfg["evaluation"]["score_bootstrap_confidence"]),
+        samples=int(cfg["evaluation"]["score_bootstrap_samples"]),
+        seed=int(cfg["evaluation"]["seed"]) + 500_000,
+    )
+    calibration_detail, calibration_summary = _calibration_frames(
+        cfg,
+        _load_models(cfg),
+        observations.to_numpy(),
+        labels,
+        int(cfg["evaluation"]["seed"]) + 600_000,
+    )
     marginal_all.to_csv(tables / "probabilistic_scores_by_asset.csv", index=False)
     aggregate_all.to_csv(tables / "probabilistic_scores_summary.csv", index=False)
     observation_all.to_csv(tables / "probabilistic_scores_by_observation.csv", index=False)
     score_differences.to_csv(tables / "probabilistic_score_differences.csv", index=False)
+    confidence_sets.to_csv(tables / "model_confidence_set.csv", index=False)
+    calibration_detail.to_csv(tables / "calibration_pit_by_asset.csv", index=False)
+    calibration_summary.to_csv(tables / "calibration_pit_summary.csv", index=False)
     model_inputs = [out / "mm_scenarios_x.npy", out / "mm_probabilities_p.npy"]
     for name in cfg["benchmarks"]["include"]:
         model_inputs.extend([out / f"{name}_scenarios.npy", out / f"{name}_probabilities.npy"])
@@ -479,6 +528,9 @@ def step_evaluate(cfg: dict):
             tables / "probabilistic_scores_summary.csv",
             tables / "probabilistic_scores_by_observation.csv",
             tables / "probabilistic_score_differences.csv",
+            tables / "model_confidence_set.csv",
+            tables / "calibration_pit_by_asset.csv",
+            tables / "calibration_pit_summary.csv",
         ],
         {
             "status": cfg["evaluation"]["status"],
@@ -493,7 +545,78 @@ def step_evaluate(cfg: dict):
     return aggregate_all
 
 
+def _calibration_frames(
+    cfg: dict,
+    models: dict[str, tuple[np.ndarray, np.ndarray]],
+    observations: np.ndarray,
+    labels: list[str],
+    seed: int,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Diagnostico PIT con soporte igualado segun configuracion."""
+    from mm_ipsa.evaluation.calibration import calibration_report
+
+    evaluation = cfg["evaluation"]
+    support = (
+        min(len(scenarios) for scenarios, _ in models.values())
+        if bool(evaluation.get("calibration_equalise_support", True))
+        else None
+    )
+    return calibration_report(
+        models,
+        observations,
+        labels,
+        seed=seed,
+        bins=int(evaluation.get("calibration_bins", 10)),
+        support_size=support,
+    )
+
+
+def _model_confidence_sets(
+    observation_scores: pd.DataFrame,
+    *,
+    block_sizes: dict[str, int],
+    alpha: float,
+    samples: int,
+    seed: int,
+    group_column: str | None = None,
+    metrics: Sequence[str] = ("mean_crps", "energy_score", "variogram_score"),
+) -> pd.DataFrame:
+    """Construye un Model Confidence Set por metrica sobre las mismas fechas.
+
+    Reutiliza el ancho de bloque ya resuelto para cada metrica en la tabla de
+    contrastes pareados, de modo que ambas inferencias describan la misma
+    estructura de dependencia temporal.
+    """
+    from mm_ipsa.evaluation.model_confidence import model_confidence_set
+
+    index: list[str] = (
+        ["observation"] if group_column is None else [group_column, "observation"]
+    )
+    frames: list[pd.DataFrame] = []
+    for position, metric in enumerate(metrics):
+        pivot = observation_scores.pivot_table(
+            index=index, columns="model", values=metric
+        )
+        groups = (
+            None
+            if group_column is None
+            else pivot.index.get_level_values(group_column).to_numpy()
+        )
+        frame = model_confidence_set(
+            pivot,
+            alpha=alpha,
+            block_size=int(block_sizes.get(metric, 1)),
+            samples=samples,
+            seed=seed + position * 1_000,
+            groups=groups,
+        )
+        frame.insert(0, "metric", metric)
+        frames.append(frame)
+    return pd.concat(frames, ignore_index=True)
+
+
 def step_portfolio(cfg: dict):
+    """Construye carteras derivadas de cada modelo y los baselines robustos."""
     banner("6/10 Portafolios robustos y baselines ingenuos")
     _ensure_dirs(cfg)
     from mm_ipsa.portfolio.optimization import (
@@ -541,7 +664,18 @@ def step_portfolio(cfg: dict):
     for name, weights in weights_by_name.items():
         for label, value in zip(labels, weights):
             weight_rows.append({"portfolio": name, "asset": label, "weight": float(value)})
-        metric_rows.append({"portfolio": name, **portfolio_diagnostics(weights, reference_scenarios, reference_p, alpha)})
+        metric_rows.append(
+            {
+                "portfolio": name,
+                **portfolio_diagnostics(
+                    weights,
+                    reference_scenarios,
+                    reference_p,
+                    alpha,
+                    risk_free_rate=float(portfolio_cfg["rf"]),
+                ),
+            }
+        )
     tables = Path(cfg["paths"]["tables"])
     pd.DataFrame(weight_rows).to_csv(tables / "portfolio_weights_research.csv", index=False)
     pd.DataFrame(metric_rows).to_csv(tables / "portfolio_metrics_in_sample.csv", index=False)
@@ -573,7 +707,32 @@ def step_portfolio(cfg: dict):
     return weights_by_name
 
 
+def _adjust_portfolio_multiplicity(frame: pd.DataFrame) -> pd.DataFrame:
+    """Aplica Holm dentro de cada familia de contrastes de portafolio.
+
+    Los contrastes like-for-like de H4 y los del efecto de rebalanceo responden
+    preguntas distintas, por lo que se corrigen por separado. Sin este ajuste,
+    afirmar que "algun portafolio mejora el Sharpe" sobre seis o mas
+    comparaciones simultaneas infla la probabilidad de un falso positivo.
+    """
+    from mm_ipsa.evaluation.comparison import holm_adjust
+
+    if frame.empty:
+        return frame
+    adjusted = frame.copy()
+    adjusted["pvalue_holm"] = np.nan
+    for family, group in adjusted.groupby("evaluation_design"):
+        adjusted.loc[group.index, "pvalue_holm"] = holm_adjust(group["pvalue_raw"])
+    adjusted["reject_holm_5pct"] = adjusted["pvalue_holm"] < 0.05
+    adjusted["ci_excludes_zero"] = (adjusted["ci_low"] > 0.0) | (
+        adjusted["ci_high"] < 0.0
+    )
+    adjusted["multiple_testing"] = "holm_within_evaluation_design"
+    return adjusted
+
+
 def step_backtest(cfg: dict):
+    """Simula las carteras OOS con deriva de pesos, turnover y costos explicitos."""
     banner("7/10 Backtest real con costos y walk-forward")
     _ensure_dirs(cfg)
     from mm_ipsa.backtest.walk_forward import (
@@ -653,29 +812,75 @@ def step_backtest(cfg: dict):
                 schedule_rows.append({"portfolio": name, "rebalance_date": date, "asset": asset, "weight": weight})
         execution.to_csv(tables / f"execution_{name}.csv")
 
-    benchmark_name = "WF_EqualWeight"
-    benchmark_net = executions[benchmark_name]["net_return"]
+    # Cada estrategia se contrasta contra el Equal Weight de su MISMO diseno de
+    # evaluacion. Comparar una cartera congelada contra un baseline que se
+    # recalibra cada trimestre mezcla dos efectos distintos -metodo de
+    # construccion y politica de rebalanceo- y hace que H4 no sea interpretable.
+    benchmark_by_design = {
+        "static_single_shot_oos": "EqualWeight",
+        "expanding_window_walk_forward": "WF_EqualWeight",
+    }
+    missing_benchmarks = sorted(
+        {
+            benchmark_by_design[design]
+            for design in designs.values()
+            if benchmark_by_design[design] not in executions
+        }
+    )
+    if missing_benchmarks:
+        raise RuntimeError(
+            f"Faltan baselines comparables por diseno: {missing_benchmarks}"
+        )
+
     bootstrap_rows = []
     for name, execution in executions.items():
-        strategy_net = execution["net_return"]
+        design = designs[name]
+        benchmark_name = benchmark_by_design[design]
+        if name == benchmark_name:
+            continue
         interval = moving_block_bootstrap_sharpe_difference(
-            strategy_net.to_numpy(),
-            benchmark_net.to_numpy(),
+            execution["net_return"].to_numpy(),
+            executions[benchmark_name]["net_return"].to_numpy(),
             block_size=int(cfg["evaluation"]["bootstrap_block_size"]),
             samples=int(cfg["evaluation"]["bootstrap_samples"]),
             seed=int(cfg["evaluation"]["seed"]),
         )
         bootstrap_rows.append({
             "portfolio": name,
-            "evaluation_design": designs[name],
+            "evaluation_design": design,
             "benchmark": benchmark_name,
+            "comparison_is_like_for_like": True,
             **interval,
         })
+
+    # Pregunta separada y legitima: cuanto aporta rebalancear. Se reporta
+    # aparte y etiquetado, nunca mezclado con el contraste de H4.
+    for name in ("WF_EqualWeight", "WF_InverseVariance", "WF_HRP"):
+        static_counterpart = name.removeprefix("WF_")
+        if name not in executions or static_counterpart not in executions:
+            continue
+        interval = moving_block_bootstrap_sharpe_difference(
+            executions[name]["net_return"].to_numpy(),
+            executions[static_counterpart]["net_return"].to_numpy(),
+            block_size=int(cfg["evaluation"]["bootstrap_block_size"]),
+            samples=int(cfg["evaluation"]["bootstrap_samples"]),
+            seed=int(cfg["evaluation"]["seed"]),
+        )
+        bootstrap_rows.append({
+            "portfolio": name,
+            "evaluation_design": "rebalancing_effect",
+            "benchmark": static_counterpart,
+            "comparison_is_like_for_like": False,
+            **interval,
+        })
+
+    bootstrap_frame = pd.DataFrame(bootstrap_rows)
+    bootstrap_frame = _adjust_portfolio_multiplicity(bootstrap_frame)
 
     metrics_frame = pd.DataFrame(rows).sort_values("sharpe", ascending=False)
     metrics_frame.to_csv(tables / "backtest_metrics.csv", index=False)
     pd.DataFrame(schedule_rows).to_csv(tables / "walk_forward_weights.csv", index=False)
-    pd.DataFrame(bootstrap_rows).to_csv(tables / "bootstrap_sharpe_differences.csv", index=False)
+    bootstrap_frame.to_csv(tables / "bootstrap_sharpe_differences.csv", index=False)
     wealth_frame = pd.DataFrame(results)
     wealth_frame.to_csv(tables / "backtest_wealth.csv")
     execution_outputs = [tables / f"execution_{name}.csv" for name in schedules]
@@ -698,7 +903,11 @@ def step_backtest(cfg: dict):
             tables / "walk_forward_weights.csv",
             *execution_outputs,
         ],
-        {"transaction_cost_bps": cost_bps, "benchmark": benchmark_name},
+        {
+            "transaction_cost_bps": cost_bps,
+            "benchmark_by_design": benchmark_by_design,
+            "multiple_testing": "holm_within_evaluation_design",
+        },
     )
     print("\n" + metrics_frame.to_string(index=False))
     print("  [ok] resultados netos de costos; sin fallback sintetico")
@@ -706,6 +915,7 @@ def step_backtest(cfg: dict):
 
 
 def step_liquidity_robustness(cfg: dict):
+    """Repite el analisis sobre el universo liquido seleccionado solo con datos IS."""
     banner("8/10 Robustez de liquidez con filtro exclusivamente in-sample")
     _ensure_dirs(cfg)
     from mm_ipsa.analysis.liquidity_robustness import (
@@ -767,6 +977,7 @@ def step_liquidity_robustness(cfg: dict):
 
 
 def step_rolling_origin(cfg: dict):
+    """Ejecuta la validacion rolling-origin recalibrando todos los modelos por fold."""
     banner("9/10 Validacion rolling-origin con recalibracion por fold")
     _ensure_dirs(cfg)
     from mm_ipsa.analysis.rolling_origin import (
@@ -849,6 +1060,7 @@ def _code_fingerprint() -> tuple[str, list[str]]:
 
 
 def step_snapshot(cfg: dict):
+    """Congela configuracion, entorno y hashes de artefactos para reproducibilidad."""
     banner("10/10 Snapshot auditable")
     _ensure_dirs(cfg)
     required_stages = (
@@ -1025,6 +1237,7 @@ def _execution_sequence(step: str) -> tuple[str, ...]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Punto de entrada del CLI; devuelve 0 si la etapa solicitada termina bien."""
     parser = argparse.ArgumentParser(description="Pipeline de investigacion MM-BCD IPSA")
     parser.add_argument(
         "--step",

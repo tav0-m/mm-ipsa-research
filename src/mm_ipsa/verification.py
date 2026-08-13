@@ -21,6 +21,7 @@ from mm_ipsa.mm.targets import compute_targets
 
 
 def sha256(path: Path) -> str:
+    """Digest SHA-256 leyendo por bloques para no cargar el archivo completo."""
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -28,7 +29,54 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _block_sizes_are_valid(
+    differences: pd.DataFrame, cfg: dict, n_observations: int
+) -> bool:
+    """Comprueba que el ancho de bloque respete el modo declarado.
+
+    Con seleccion automatica el ancho varia por contraste, de modo que exigir
+    un valor unico ya no describe el contrato. Lo que debe cumplirse es que el
+    ancho sea utilizable, que el modo registrado coincida con la configuracion
+    y que el diagnostico de Politis-White acompane a cada fila cuando el modo
+    es automatico.
+    """
+    sizes = differences["block_size"].astype(int)
+    if not bool(((sizes >= 1) & (sizes <= n_observations)).all()):
+        return False
+    mode = str(cfg["evaluation"].get("score_bootstrap_block_size_mode", "auto"))
+    if mode == "fixed":
+        expected = int(cfg["evaluation"]["score_bootstrap_block_size"])
+        return bool((sizes == expected).all())
+    if "block_size_mode_auto" not in differences.columns:
+        return False
+    if not bool((differences["block_size_mode_auto"] == 1.0).all()):
+        return False
+    return "block_size_politis_white" in differences.columns
+
+
+def _rolling_block_sizes_are_valid(
+    differences: pd.DataFrame, inference_cfg: dict, smallest_fold: int
+) -> bool:
+    """Igual que el contrato del split unico, pero acotado por el fold mas corto.
+
+    Ningun bloque puede exceder el largo del fold menor, porque los bloques no
+    cruzan fronteras temporales y no habria de donde tomarlos.
+    """
+    sizes = differences["block_size"].astype(int)
+    if not bool(((sizes >= 1) & (sizes <= smallest_fold)).all()):
+        return False
+    mode = str(inference_cfg.get("block_size_mode", "auto"))
+    if mode == "fixed":
+        return bool((sizes == int(inference_cfg["block_size"])).all())
+    return bool(
+        "block_size_mode_auto" in differences.columns
+        and (differences["block_size_mode_auto"] == 1.0).all()
+    )
+
+
 class Verifier:
+    """Acumula fallos de contrato e imprime cada comprobacion a medida que ocurre."""
+
     def __init__(self):
         self.failures: list[str] = []
 
@@ -40,6 +88,7 @@ class Verifier:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Verifica artefactos y contratos; devuelve 1 ante cualquier fallo critico."""
     parser = argparse.ArgumentParser(description="Verifica contratos y artefactos MM-IPSA")
     parser.add_argument("--scope", choices=["core", "full"], default="full")
     args = parser.parse_args(argv)
@@ -273,10 +322,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     lambda column: column.between(0.0, 1.0).all()
                 ).all()
                 and (differences["pvalue_holm"] + 1e-15 >= differences["pvalue_raw"]).all()
-                and (
-                    differences["block_size"]
-                    == int(cfg["evaluation"]["score_bootstrap_block_size"])
-                ).all()
+                and _block_sizes_are_valid(differences, cfg, len(oos))
                 and (
                     differences["bootstrap_samples"]
                     == int(cfg["evaluation"]["score_bootstrap_samples"])
@@ -365,6 +411,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             expected_fold_ids = [str(fold["fold_id"]) for fold in rolling_cfg["folds"]]
             actual_fold_ids = definitions["fold_id"].astype(str).tolist()
             total_windows = int(definitions["evaluation_terminal_rows"].sum())
+            smallest_fold_windows = int(definitions["evaluation_terminal_rows"].min())
             expected_models = {"MM", *cfg["benchmarks"]["include"]}
             verifier.check(
                 actual_fold_ids == expected_fold_ids
@@ -450,7 +497,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 and (differences["n_groups"] == len(expected_fold_ids)).all()
                 and (differences["n_observations"] == total_windows).all()
                 and (differences["group_column"] == "fold_id").all()
-                and (differences["block_size"] == int(inference_cfg["block_size"])).all()
+                and _rolling_block_sizes_are_valid(
+                    differences, inference_cfg, smallest_fold_windows
+                )
                 and (
                     differences["bootstrap_samples"]
                     == int(inference_cfg["bootstrap_samples"])

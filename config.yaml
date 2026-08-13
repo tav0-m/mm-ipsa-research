@@ -82,7 +82,10 @@ mm:
   cov_normalize: true
   cov_scale_floor: 0.001
   cov_offdiag_only: true
-  covariance_shrinkage: 0.10
+  # 'auto' estima la intensidad optima de Ledoit-Wolf con los datos del propio
+  # origen. Hasta v0.5.0 era la constante 0.10, elegida sin experimento que la
+  # respaldara pese a que el protocolo exigia fijarla por validacion temporal.
+  covariance_shrinkage: auto
   entropy_lambda: 1.0e-5
   # Retornos H=5 rolling generan una observacion por dia. Once semanas son
   # 55 filas: lambda = 0.5^(1/55) = 0.987476...
@@ -92,16 +95,17 @@ mm:
 benchmarks:
   N_scenarios: 10000
   seed: 42
+  # nu se estima por verosimilitud de perfil con media y covarianza fijadas en
+  # los mismos targets EWMA que recibe MM. En rolling-origin se reestima en
+  # cada origen usando solo observaciones anteriores. El modo fixed se conserva
+  # para reproducir corridas historicas: hasta v0.5.0 nu era 6.0 sin estimar.
+  student_t_df_mode: mle
   student_t_df: 6.0
+  student_t_df_bounds: [4.5, 60.0]
   include:
     - gaussian_terminal
     - student_t_terminal
     - historical_weighted
-
-# Compatibilidad temporal con scripts antiguos; se retirara tras migrarlos.
-wiener:
-  N_scenarios: 10000
-  seed: 42
 
 portfolio:
   max_weight: 0.25
@@ -116,12 +120,23 @@ evaluation:
   bootstrap_samples: 2000
   bootstrap_block_size: 20
   # Inferencia de scoring rules sobre ventanas H=5 no solapadas.
-  # Cuatro ventanas equivalen aproximadamente a 20 sesiones bursatiles.
+  # El ancho de bloque lo elige Politis-White (2004) con la correccion de
+  # Patton, Politis y White (2009) sobre las autocovarianzas agrupadas dentro
+  # de folds. score_bootstrap_block_size queda como respaldo cuando el criterio
+  # no es aplicable y como valor del modo fixed.
   score_bootstrap_samples: 5000
   score_bootstrap_block_size: 4
+  score_bootstrap_block_size_mode: auto
+  score_bootstrap_block_size_grid: [2, 4, 8, 12, 20]
   score_bootstrap_confidence: 0.95
   score_multiple_testing: holm
   energy_pair_samples: 100000
+  # Diagnostico PIT. El soporte se iguala entre modelos antes de contrastar
+  # uniformidad: bajo especificacion correcta un ensemble de 500 escenarios
+  # rechaza cerca del 27% de las veces frente al 5% nominal, de modo que sin
+  # igualar se estaria midiendo resolucion en lugar de calibracion.
+  calibration_bins: 10
+  calibration_equalise_support: true
   seed: 20260809
   status: development_validation
   primary_score: crps

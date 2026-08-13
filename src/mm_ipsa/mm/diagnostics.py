@@ -27,6 +27,12 @@ COL_MM   = "#E8622A"
 
 # ═══════════════════════════════════════════════════════════════════════════
 class MMDiagnostics:
+    """Tablas y figuras que contrastan la solucion MM con sus momentos objetivo.
+
+    La curtosis se reporta como exceso, de modo que el cero corresponde a colas
+    gaussianas y no se confunda un valor normal con una cola pesada.
+    """
+
     def __init__(self, x, p, M, Sigma_tgt, labels, cfg):
         self.x      = x          # (N, n)
         self.p      = p          # (N,)
@@ -66,21 +72,24 @@ class MMDiagnostics:
             mh = self.M[:, i]
             mm = self.m_mm[:, i]
             
-            kurt_h = mh[3]/(mh[1]**2+1e-10)
-            kurt_m = mm[3]/(mm[1]**2+1e-10)
+            # Se reporta exceso de curtosis (Pearson menos 3) para que el cero
+            # sea la referencia gaussiana. Con la convencion de Pearson, un
+            # valor de 3 se lee como cola pesada cuando en realidad es normal.
+            kurt_h = mh[3]/(mh[1]**2+1e-10) - 3.0
+            kurt_m = mm[3]/(mm[1]**2+1e-10) - 3.0
             skew_h = mh[2]/(mh[1]**1.5+1e-10)
             skew_m = mm[2]/(mm[1]**1.5+1e-10)
-            
+
             rows.append({
-                "Activo"     : label,
-                "mu_hist_%"  : mh[0]*100,
-                "mu_mm_%"    : mm[0]*100,
-                "sig_hist_%" : np.sqrt(mh[1])*100,
-                "sig_mm_%"   : np.sqrt(mm[1])*100,
-                "skew_hist"  : skew_h,
-                "skew_mm"    : skew_m,
-                "kurt_hist"  : kurt_h,
-                "kurt_mm"    : kurt_m,
+                "Activo"           : label,
+                "mu_hist_%"        : mh[0]*100,
+                "mu_mm_%"          : mm[0]*100,
+                "sig_hist_%"       : np.sqrt(mh[1])*100,
+                "sig_mm_%"         : np.sqrt(mm[1])*100,
+                "skew_hist"        : skew_h,
+                "skew_mm"          : skew_m,
+                "excess_kurt_hist" : kurt_h,
+                "excess_kurt_mm"   : kurt_m,
             })
         df = pd.DataFrame(rows)
         df.to_csv(self.tab_dir / "moments_comparison.csv", index=False)
@@ -323,19 +332,20 @@ class MMDiagnostics:
         sig_h = X_hist.std(0)*100
         sk_h  = np.array([(((x:=X_hist[:,i])-x.mean())**3).mean()/
                            (x.std()**3+1e-10) for i in range(n)])
+        # Exceso de curtosis: cero equivale a colas gaussianas.
         ku_h  = np.array([(((x:=X_hist[:,i])-x.mean())**4).mean()/
-                           (x.std()**4+1e-10) for i in range(n)])
-        
+                           (x.std()**4+1e-10) for i in range(n)]) - 3.0
+
         mu_m  = self.mu_mm*100
         sig_m = np.sqrt(np.maximum(self.m_mm[1],0))*100
         sk_m  = self.m_mm[2]/(self.m_mm[1]**1.5+1e-10)
-        ku_m  = self.m_mm[3]/(self.m_mm[1]**2+1e-10)
+        ku_m  = self.m_mm[3]/(self.m_mm[1]**2+1e-10) - 3.0
         
         panels = [
             (axes[0], mu_h,  mu_m,  "Retorno esperado H=5 — MM replica con error < 0.01%", "Media (×100)"),
             (axes[1], sig_h, sig_m, "Desviación estándar — ajuste casi perfecto en todos los activos","Volatilidad (%)"),
             (axes[2], sk_h,  sk_m,  "Asimetría — MM captura el signo y magnitud con alta precisión", "Skewness"),
-            (axes[3], ku_h,  ku_m,  "Colas pesadas — comparación diagnóstica de kurtosis","Kurtosis"),
+            (axes[3], ku_h,  ku_m,  "Colas pesadas — exceso de curtosis (0 = gaussiana)","Exceso de curtosis"),
         ]
         
         for ax, vals_h, vals_m, subtitle, ylabel in panels:

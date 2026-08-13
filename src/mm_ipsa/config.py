@@ -11,6 +11,7 @@ from mm_ipsa.mm.targets import resolve_decay_lambda
 
 
 def load_config(path: str | Path = "config.yaml") -> dict:
+    """Carga y valida la configuracion antes de que ninguna etapa la use."""
     with Path(path).open("r", encoding="utf-8") as stream:
         cfg = yaml.safe_load(stream)
     validate_config(cfg)
@@ -18,6 +19,7 @@ def load_config(path: str | Path = "config.yaml") -> dict:
 
 
 def validate_config(cfg: dict) -> None:
+    """Falla temprano ante contratos rotos en datos, MM, benchmarks o evaluacion."""
     assets = cfg.get("assets", [])
     labels = cfg.get("asset_labels", [])
     if not assets or len(assets) != len(labels) or len(set(labels)) != len(labels):
@@ -37,6 +39,16 @@ def validate_config(cfg: dict) -> None:
         raise ValueError("El decaimiento EWMA resuelto debe pertenecer a (0, 1]")
     if int(mm["N_scenarios"]) <= 1 or int(mm["n_starts"]) <= 0:
         raise ValueError("N_scenarios y n_starts no son validos")
+
+    benchmarks = cfg["benchmarks"]
+    df_mode = str(benchmarks.get("student_t_df_mode", "mle"))
+    if df_mode not in {"mle", "fixed"}:
+        raise ValueError("student_t_df_mode debe ser mle o fixed")
+    if float(benchmarks["student_t_df"]) <= 4.0:
+        raise ValueError("student_t_df debe ser mayor que 4 para cuarto momento finito")
+    bounds = benchmarks.get("student_t_df_bounds", [4.5, 60.0])
+    if len(bounds) != 2 or not 4.0 < float(bounds[0]) < float(bounds[1]):
+        raise ValueError("student_t_df_bounds debe cumplir 4 < low < high")
 
     evaluation = cfg["evaluation"]
     if int(evaluation["score_bootstrap_samples"]) < 100:
@@ -68,8 +80,14 @@ def objective_weights(mm_cfg: dict) -> dict:
 
 
 def target_parameters(mm_cfg: dict) -> dict:
+    """Resuelve decaimiento EWMA y contraccion de covarianza para compute_targets."""
     observations = float(mm_cfg.get("observations_per_week", 5.0))
+    shrinkage = mm_cfg.get("covariance_shrinkage", 0.0)
     return {
         "decay_lambda": resolve_decay_lambda(mm_cfg, observations),
-        "covariance_shrinkage": float(mm_cfg.get("covariance_shrinkage", 0.0)),
+        # 'auto' se propaga como cadena para que compute_targets estime la
+        # intensidad con los datos del origen correspondiente.
+        "covariance_shrinkage": (
+            "auto" if str(shrinkage) == "auto" else float(shrinkage)
+        ),
     }

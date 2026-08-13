@@ -124,6 +124,17 @@ def _observation_score_components(
     ids = list(range(len(y))) if observation_ids is None else list(observation_ids)
     if len(ids) != len(y) or len(set(map(str, ids))) != len(ids):
         raise ValueError("observation_ids debe ser unico y coincidir con OOS")
+    # Los identificadores se guardan como texto y el pivot posterior ordena
+    # lexicograficamente. Con marcas de tiempo ISO ese orden coincide con el
+    # cronologico, pero con enteros o cadenas sin relleno no lo haria y el
+    # bootstrap por bloques formaria bloques de observaciones no contiguas sin
+    # que nada falle. Se exige que ambos ordenes coincidan.
+    textual = [str(value) for value in ids]
+    if textual != sorted(textual):
+        raise ValueError(
+            "observation_ids debe llegar en orden cronologico y su forma textual "
+            "debe ser ascendente; use marcas de tiempo ISO o claves con relleno"
+        )
 
     crps_values = _crps_matrix(x, p, y)
     rng = np.random.default_rng(seed)

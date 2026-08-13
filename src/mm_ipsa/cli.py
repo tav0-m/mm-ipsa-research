@@ -36,6 +36,7 @@ def _assets(argv: Sequence[str]) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Despacha los subcomandos run y verify de la interfaz mm-ipsa."""
     arguments = list(sys.argv[1:] if argv is None else argv)
     if not arguments or arguments[0] in {"-h", "--help"}:
         _print_help()

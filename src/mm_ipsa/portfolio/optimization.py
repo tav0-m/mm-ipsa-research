@@ -12,6 +12,7 @@ from mm_ipsa.models.benchmarks import nearest_psd
 
 
 def weighted_mean_cov(scenarios: np.ndarray, probabilities: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Media y covarianza ponderadas de una predictiva discreta."""
     x = np.asarray(scenarios, dtype=float)
     p = np.asarray(probabilities, dtype=float)
     p = p / p.sum()
@@ -22,12 +23,14 @@ def weighted_mean_cov(scenarios: np.ndarray, probabilities: np.ndarray) -> tuple
 
 
 def equal_weight(n_assets: int) -> np.ndarray:
+    """Cartera equiponderada, el baseline mas dificil de superar de forma robusta."""
     if n_assets <= 0:
         raise ValueError("n_assets debe ser positivo")
     return np.full(n_assets, 1.0 / n_assets)
 
 
 def inverse_variance(covariance: np.ndarray) -> np.ndarray:
+    """Pesos proporcionales al inverso de la varianza, ignorando correlaciones."""
     variance = np.maximum(np.diag(covariance), 1e-15)
     weights = 1.0 / variance
     return weights / weights.sum()
@@ -66,8 +69,21 @@ def hierarchical_risk_parity(covariance: np.ndarray) -> np.ndarray:
     return weights / weights.sum()
 
 
-def _feasible_weights(weights: np.ndarray, max_weight: float) -> np.ndarray:
+def _feasible_weights(
+    weights: np.ndarray, max_weight: float, tolerance: float = 1e-9
+) -> np.ndarray:
+    """Proyecta al simplex respetando el tope por activo.
+
+    La renormalizacion final puede reintroducir una violacion del tope si el
+    reparto iterativo no llego a converger, por lo que el resultado se verifica
+    explicitamente. Devolver en silencio una cartera que excede ``max_weight``
+    invalidaria cualquier lectura de concentracion o de riesgo aguas abajo.
+    """
+    if not 0.0 < max_weight <= 1.0:
+        raise ValueError("max_weight debe pertenecer a (0, 1]")
     weights = np.clip(np.asarray(weights, dtype=float), 0.0, max_weight)
+    if max_weight * len(weights) < 1.0 - tolerance:
+        raise ValueError("max_weight hace inviable el presupuesto")
     # Proyeccion iterativa simple porque n es pequeno y sum(max_weight)>=1.
     for _ in range(100):
         deficit = 1.0 - weights.sum()
@@ -78,7 +94,16 @@ def _feasible_weights(weights: np.ndarray, max_weight: float) -> np.ndarray:
             raise ValueError("max_weight hace inviable el presupuesto")
         weights[free] += deficit / int(free.sum())
         weights = np.clip(weights, 0.0, max_weight)
-    return weights / weights.sum()
+    total = float(weights.sum())
+    if total <= 0.0:
+        raise ValueError("La proyeccion produjo un presupuesto nulo")
+    weights = weights / total
+    if weights.max() > max_weight + tolerance:
+        raise RuntimeError(
+            "La proyeccion no converge: peso maximo "
+            f"{weights.max():.6f} supera el tope {max_weight:.6f}"
+        )
+    return weights
 
 
 def minimum_variance(
@@ -184,7 +209,14 @@ def portfolio_diagnostics(
     scenarios: np.ndarray,
     probabilities: np.ndarray,
     alpha: float = 0.05,
+    risk_free_rate: float = 0.0,
 ) -> dict[str, float]:
+    """Metricas descriptivas de una cartera sobre una predictiva discreta.
+
+    ``risk_free_rate`` se resta igual que en ``maximum_sharpe``; sin este
+    argumento el Sharpe reportado y el Sharpe optimizado diferian cuando la
+    tasa no era cero, y las dos cifras aparecian juntas en las tablas.
+    """
     mean, covariance = weighted_mean_cov(scenarios, probabilities)
     returns = np.asarray(scenarios) @ weights
     p = np.asarray(probabilities, dtype=float)
@@ -193,7 +225,8 @@ def portfolio_diagnostics(
     return {
         "expected_return": float(weights @ mean),
         "volatility": float(volatility),
-        "sharpe": float(weights @ mean / max(volatility, 1e-15)),
+        "sharpe": float((weights @ mean - risk_free_rate) / max(volatility, 1e-15)),
+        "risk_free_rate": float(risk_free_rate),
         "lower_es": lower_tail_mean(returns, p, alpha),
         "herfindahl": float(np.sum(weights**2)),
         "effective_assets": float(1.0 / np.sum(weights**2)),

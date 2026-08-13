@@ -22,7 +22,7 @@ from mm_ipsa.evaluation.scoring import evaluate_scenarios_detailed
 from mm_ipsa.mm.bcd import BCDSolver
 from mm_ipsa.mm.objective import MMObjective
 from mm_ipsa.mm.targets import _ewma_weights, compute_targets, save_targets
-from mm_ipsa.models.benchmarks import generate_benchmarks
+from mm_ipsa.models.benchmarks import generate_benchmarks, resolve_student_t_df
 from mm_ipsa.portfolio.optimization import (
     equal_weight,
     hierarchical_risk_parity,
@@ -275,13 +275,22 @@ def _run_backtest(
         execution.to_csv(execution_path)
         execution_paths.append(execution_path)
 
-    benchmark_name = "WF_EqualWeight"
-    benchmark_returns = executions[benchmark_name]["net_return"].to_numpy()
+    # Mismo criterio que el analisis principal: cada estrategia se contrasta
+    # contra el Equal Weight de su propio diseno de evaluacion.
+    from mm_ipsa.pipeline import _adjust_portfolio_multiplicity
+
+    benchmark_by_design = {
+        "static_single_shot_oos": "EqualWeight",
+        "expanding_window_walk_forward": "WF_EqualWeight",
+    }
     bootstrap_rows = []
     for name, execution in executions.items():
+        benchmark_name = benchmark_by_design[designs[name]]
+        if name == benchmark_name or benchmark_name not in executions:
+            continue
         interval = moving_block_bootstrap_sharpe_difference(
             execution["net_return"].to_numpy(),
-            benchmark_returns,
+            executions[benchmark_name]["net_return"].to_numpy(),
             block_size=int(main_cfg["evaluation"]["bootstrap_block_size"]),
             samples=int(main_cfg["evaluation"]["bootstrap_samples"]),
             seed=int(main_cfg["evaluation"]["seed"]),
@@ -291,12 +300,13 @@ def _run_backtest(
                 "portfolio": name,
                 "evaluation_design": designs[name],
                 "benchmark": benchmark_name,
+                "comparison_is_like_for_like": True,
                 **interval,
             }
         )
 
     metrics = pd.DataFrame(rows).sort_values("sharpe", ascending=False)
-    bootstrap = pd.DataFrame(bootstrap_rows)
+    bootstrap = _adjust_portfolio_multiplicity(pd.DataFrame(bootstrap_rows))
     metrics.to_csv(output_dir / "backtest_metrics.csv", index=False)
     bootstrap.to_csv(output_dir / "bootstrap_sharpe_differences.csv", index=False)
     pd.DataFrame(schedule_rows).to_csv(output_dir / "walk_forward_weights.csv", index=False)
@@ -358,6 +368,18 @@ def run_liquidity_robustness(
 
     history_weights = _ewma_weights(len(terminal_is), parameters["decay_lambda"])
     benchmark_cfg = main_cfg["benchmarks"]
+    # El universo liquido tiene menos activos, por lo que nu se reestima sobre
+    # ese universo en vez de heredar el del analisis principal.
+    student_t_df, student_t_report = resolve_student_t_df(
+        benchmark_cfg,
+        terminal_is.to_numpy(),
+        moments[0],
+        covariance,
+        history_weights,
+    )
+    (output / "student_t_df_estimation.json").write_text(
+        json.dumps(student_t_report, indent=2), encoding="utf-8"
+    )
     benchmarks = generate_benchmarks(
         moments,
         covariance,
@@ -365,7 +387,7 @@ def run_liquidity_robustness(
         history_weights,
         n_scenarios=int(benchmark_cfg["N_scenarios"]),
         seed=int(benchmark_cfg["seed"]),
-        student_t_df=float(benchmark_cfg["student_t_df"]),
+        student_t_df=student_t_df,
     )
     models: dict[str, tuple[np.ndarray, np.ndarray]] = {
         "MM": (mm_scenarios, mm_probabilities),
@@ -401,6 +423,9 @@ def run_liquidity_robustness(
         focal_model="MM",
         benchmark_models=list(main_cfg["benchmarks"]["include"]),
         block_size=int(main_cfg["evaluation"]["score_bootstrap_block_size"]),
+        block_size_mode=str(
+            main_cfg["evaluation"].get("score_bootstrap_block_size_mode", "auto")
+        ),
         samples=int(main_cfg["evaluation"]["score_bootstrap_samples"]),
         confidence_level=float(main_cfg["evaluation"]["score_bootstrap_confidence"]),
         seed=int(main_cfg["evaluation"]["seed"]),
@@ -433,6 +458,7 @@ def run_liquidity_robustness(
                 **portfolio_diagnostics(
                     weights, mm_scenarios, mm_probabilities,
                     float(main_cfg["portfolio"]["alpha_cvar"]),
+                    risk_free_rate=float(main_cfg["portfolio"]["rf"]),
                 ),
             }
         )

@@ -333,6 +333,7 @@ def generate_release_assets(
     rolling_dir: str | Path = "outputs/robustness/rolling_origin",
     destination: str | Path = "docs/assets",
 ) -> list[Path]:
+    """Genera las figuras de release a partir de los resultados rolling-origin."""
     import json
 
     source = Path(rolling_dir)
