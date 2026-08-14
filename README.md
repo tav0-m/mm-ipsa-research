@@ -142,7 +142,6 @@ Un test verde prueba contratos de software y trazabilidad; no prueba rentabilida
 - [Guía de implementación](research/IMPLEMENTATION_GUIDE.md)
 - [Referencias](research/REFERENCES.md)
 - [Ficha pública](docs/index.html)
-- [Borrador para LinkedIn](docs/LINKEDIN_POST_ES.md)
 - [Historial de versiones](CHANGELOG.md)
 
 ## Licencia
