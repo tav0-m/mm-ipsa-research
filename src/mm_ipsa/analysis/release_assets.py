@@ -14,13 +14,52 @@ MODEL_LABELS = {
     "gaussian_terminal": "Gaussiano",
     "student_t_terminal": "Student-t",
     "historical_weighted": "Histórico EWMA",
+    "dcc_garch": "DCC-GARCH",
 }
 MODEL_COLORS = {
     "MM": "#7C3AED",
     "gaussian_terminal": "#2563EB",
     "student_t_terminal": "#059669",
     "historical_weighted": "#D97706",
+    "dcc_garch": "#DC2626",
 }
+
+
+def model_label(name: str) -> str:
+    """Etiqueta legible de un modelo, tolerando controles no catalogados."""
+    return MODEL_LABELS.get(str(name), str(name))
+
+
+def model_color(name: str) -> str:
+    """Color asignado a un modelo; gris neutro si no esta catalogado."""
+    return MODEL_COLORS.get(str(name), "#6B7280")
+
+
+def package_version() -> str:
+    """Version instalada del paquete, para que la portada nunca quede desfasada."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("mm-ipsa-research")
+    except PackageNotFoundError:
+        return "desarrollo"
+
+
+def count_automated_tests(tests_dir: str | Path = "tests") -> int:
+    """Cuenta las pruebas declaradas en el arbol de tests.
+
+    Se calcula en vez de escribirse a mano: una cifra fija en la portada queda
+    obsoleta en cuanto se agrega cobertura, y publicarla desactualizada resta
+    credibilidad justamente donde se busca demostrarla.
+    """
+    root = Path(tests_dir)
+    if not root.is_dir():
+        return 0
+    return sum(
+        line.strip().startswith("def test_")
+        for path in root.glob("test_*.py")
+        for line in path.read_text(encoding="utf-8").splitlines()
+    )
 
 
 def _style_axis(axis: Axes) -> None:
@@ -52,8 +91,8 @@ def plot_crps_stability(scores: pd.DataFrame, output: Path) -> None:
             marker="o",
             linewidth=2.4 if model == "MM" else 1.8,
             markersize=7,
-            label=MODEL_LABELS[model],
-            color=MODEL_COLORS[model],
+            label=model_label(model),
+            color=model_color(model),
         )
     axis.axhline(0.0, color="#111827", linewidth=1.0)
     axis.set_xticks(x, fold_order)
@@ -145,14 +184,14 @@ def plot_linkedin_card(
     facts = [
         (str(metadata["fold_count"]), "folds temporales"),
         (str(metadata["total_evaluation_windows"]), "ventanas OOS H=5"),
-        ("49", "tests automatizados"),
+        (str(count_automated_tests()), "tests automatizados"),
     ]
     for index, (value, label) in enumerate(facts):
         x = 0.07 + index * 0.25
         axis.text(x, 0.43, value, color="#A78BFA", fontsize=25, fontweight="bold")
         axis.text(x, 0.35, label, color="#E2E8F0", fontsize=11)
     conclusion = (
-        f"Mejor CRPS pooled: {MODEL_LABELS[str(best_crps['model'])]}. "
+        f"Mejor CRPS pooled: {model_label(best_crps['model'])}. "
         f"MM-BCD ganó {int(mm_crps['fold_wins'])}/{int(mm_crps['folds'])} folds en CRPS."
     )
     axis.text(0.07, 0.20, conclusion, color="white", fontsize=13)
@@ -163,7 +202,14 @@ def plot_linkedin_card(
         color="#FBBF24",
         fontsize=12,
     )
-    axis.text(0.93, 0.06, "MM-IPSA Research · v0.5.0", color="#94A3B8", fontsize=10, ha="right")
+    axis.text(
+        0.93,
+        0.06,
+        f"MM-IPSA Research · v{package_version()}",
+        color="#94A3B8",
+        fontsize=10,
+        ha="right",
+    )
     figure.savefig(output, dpi=100, facecolor=figure.get_facecolor())
     plt.close(figure)
 
@@ -173,8 +219,8 @@ def plot_pooled_crps(pooled: pd.DataFrame, output: Path) -> None:
     data = pooled.sort_values("mean_crps", ascending=False).copy()
     best = float(data["mean_crps"].min())
     data["excess_bp"] = 10_000 * (data["mean_crps"] - best)
-    labels = [MODEL_LABELS[str(model)] for model in data["model"]]
-    colors = [MODEL_COLORS[str(model)] for model in data["model"]]
+    labels = [model_label(model) for model in data["model"]]
+    colors = [model_color(model) for model in data["model"]]
 
     figure, axis = plt.subplots(figsize=(10, 10), constrained_layout=True)
     bars = axis.barh(labels, data["excess_bp"], color=colors, alpha=0.9)
@@ -231,8 +277,8 @@ def plot_crps_stability_square(scores: pd.DataFrame, output: Path) -> None:
             marker="o",
             linewidth=3.0 if model == "MM" else 2.0,
             markersize=9,
-            label=MODEL_LABELS[model],
-            color=MODEL_COLORS[model],
+            label=model_label(model),
+            color=model_color(model),
         )
     axis.axhline(0.0, color="#111827", linewidth=1.0)
     axis.set_xticks(x, fold_order)

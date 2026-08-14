@@ -256,19 +256,21 @@ def run_rolling_origin(
             historical_weights,
         )
         student_t_report["fold_id"] = fold_id
+        benchmark_models, benchmark_diagnostics = generate_benchmarks(
+            moments,
+            covariance,
+            training_terminal.to_numpy(),
+            historical_weights,
+            n_scenarios=int(benchmark_cfg["N_scenarios"]),
+            seed=int(benchmark_cfg["seed"]) + fold_index * 1_000,
+            student_t_df=student_t_df,
+            daily_returns=training_daily.to_numpy(),
+            horizon=horizon,
+            include=list(benchmark_cfg["include"]),
+        )
+        student_t_report.update(benchmark_diagnostics)
         student_t_rows.append(student_t_report)
-        models = {
-            "MM": (mm_scenarios, mm_probabilities),
-            **generate_benchmarks(
-                moments,
-                covariance,
-                training_terminal.to_numpy(),
-                historical_weights,
-                n_scenarios=int(benchmark_cfg["N_scenarios"]),
-                seed=int(benchmark_cfg["seed"]) + fold_index * 1_000,
-                student_t_df=student_t_df,
-            ),
-        }
+        models = {"MM": (mm_scenarios, mm_probabilities), **benchmark_models}
 
         from mm_ipsa.pipeline import _calibration_frames
 

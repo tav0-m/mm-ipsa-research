@@ -61,6 +61,17 @@ Todos reciben la misma media, covarianza, horizonte H y ponderación temporal:
   grados de libertad **estimados**, no impuestos.
 - Distribución histórica EWMA sin ruido Monte Carlo.
 
+A estos tres se suma **DCC-GARCH**, que rompe deliberadamente la simetría de
+información: se estima sobre la dinámica diaria y se proyecta al horizonte, en
+vez de recibir solo los momentos terminales. Los tres controles anteriores son
+distribuciones estáticas y ninguno modela la evolución de la volatilidad ni de la
+dependencia dentro del horizonte; superarlos es un listón considerablemente más
+bajo que superar al estándar de la literatura de pronóstico multivariado. La
+asimetría debe declararse en toda lectura comparativa. Su media terminal se
+recentra al mismo primer momento que reciben los demás; la covarianza no se
+impone, porque reproducirla de forma condicional es justamente lo que este
+control hace distinto.
+
 Los grados de libertad se estiman por verosimilitud de perfil dejando fijas media
 y covarianza en los mismos targets EWMA que recibe MM. Solo se ajusta el
 parámetro de cola: si se estimaran también los dos primeros momentos, el control

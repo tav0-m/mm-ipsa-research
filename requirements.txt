@@ -1,4 +1,4 @@
-# MM-IPSA Research v0.6.0
+# MM-IPSA Research v0.7.0
 # Python 3.11-3.12. Los rangos siguen el contrato de pyproject.toml.
 
 # Ejecucion

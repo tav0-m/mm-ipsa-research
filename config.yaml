@@ -106,6 +106,12 @@ benchmarks:
     - gaussian_terminal
     - student_t_terminal
     - historical_weighted
+    # DCC-GARCH usa un conjunto de informacion mas rico que los otros tres: se
+    # estima sobre la dinamica diaria y se proyecta H pasos, en vez de recibir
+    # solo los momentos terminales. La asimetria es deliberada; superar a un
+    # gaussiano estatico es un liston mucho mas bajo que superar al estandar de
+    # la literatura de pronostico multivariado.
+    - dcc_garch
 
 portfolio:
   max_weight: 0.25

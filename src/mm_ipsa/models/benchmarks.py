@@ -232,13 +232,54 @@ def generate_benchmarks(
     n_scenarios: int = 10_000,
     seed: int = 42,
     student_t_df: float = 6.0,
-) -> dict[str, tuple[np.ndarray, np.ndarray]]:
-    """Genera el conjunto estandar de controles con identico target H."""
+    daily_returns: np.ndarray | None = None,
+    horizon: int = 5,
+    include: list[str] | None = None,
+) -> tuple[dict[str, tuple[np.ndarray, np.ndarray]], dict[str, float]]:
+    """Genera el conjunto de controles y el diagnostico de los que se ajustan.
+
+    Los tres primeros controles comparten media, covarianza y horizonte. El
+    control ``dcc_garch`` requiere ademas ``daily_returns`` porque se estima
+    sobre la dinamica diaria y se proyecta hacia adelante: usa un conjunto de
+    informacion estrictamente mas rico y por eso se declara aparte.
+    """
     mean = np.asarray(moments, dtype=float)[0]
-    return {
-        "gaussian_terminal": gaussian_terminal(mean, covariance, n_scenarios, seed),
-        "student_t_terminal": student_t_terminal(
+    requested = (
+        list(include)
+        if include is not None
+        else ["gaussian_terminal", "student_t_terminal", "historical_weighted"]
+    )
+    models: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    diagnostics: dict[str, float] = {}
+
+    if "gaussian_terminal" in requested:
+        models["gaussian_terminal"] = gaussian_terminal(
+            mean, covariance, n_scenarios, seed
+        )
+    if "student_t_terminal" in requested:
+        models["student_t_terminal"] = student_t_terminal(
             mean, covariance, n_scenarios, student_t_df, seed + 1
-        ),
-        "historical_weighted": historical_weighted(historical, historical_weights),
-    }
+        )
+    if "historical_weighted" in requested:
+        models["historical_weighted"] = historical_weighted(
+            historical, historical_weights
+        )
+    if "dcc_garch" in requested:
+        if daily_returns is None:
+            raise ValueError("dcc_garch requiere daily_returns para estimarse")
+        from mm_ipsa.models.dcc_garch import dcc_garch_terminal
+
+        scenarios, probabilities, report = dcc_garch_terminal(
+            daily_returns,
+            horizon=horizon,
+            n_scenarios=n_scenarios,
+            seed=seed + 2,
+            terminal_mean=mean,
+        )
+        models["dcc_garch"] = (scenarios, probabilities)
+        diagnostics.update(report)
+
+    missing = [name for name in requested if name not in models]
+    if missing:
+        raise ValueError(f"Controles no reconocidos: {missing}")
+    return models, diagnostics

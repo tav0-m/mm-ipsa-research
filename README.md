@@ -8,26 +8,31 @@
 
 Plataforma de investigación cuantitativa independiente para estudiar generación de escenarios discretos por ajuste de momentos y su utilidad en decisiones de portafolio sobre acciones chilenas.
 
-La pregunta no es si MM-BCD reproduce media, covarianza y momentos superiores —lo hace con alta precisión—, sino si esa calibración mejora pronósticos probabilísticos y decisiones económicas fuera de muestra frente a controles Gaussian, Student-t e histórico EWMA.
+La pregunta no es si MM-BCD reproduce media, covarianza y momentos superiores —lo hace con alta precisión—, sino si esa calibración mejora pronósticos probabilísticos y decisiones económicas fuera de muestra frente a controles Gaussian, Student-t, histórico EWMA y DCC-GARCH.
 
-**Versión pública actual:** `v0.6.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
+**Versión pública actual:** `v0.7.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
 
 ## Resultado principal
 
 La complejidad no produjo una superioridad general. En validación rolling-origin con cuatro folds, 169 ventanas no solapadas de cinco días y recalibración completa de todos los modelos en cada origen:
 
-| Modelo | CRPS pooled | Energy Score | Variogram Score | Folds ganados en CRPS |
-|---|---:|---:|---:|---:|
-| Student-t | **0.020904** | **0.100780** | **0.654249** | 3/4 |
-| Gaussiano | 0.020934 | 0.100845 | 0.661880 | 1/4 |
-| Histórico EWMA | 0.020969 | 0.101302 | 0.654289 | 0/4 |
-| MM-BCD | 0.020990 | 0.101292 | 0.654383 | 0/4 |
+| Modelo | CRPS pooled | Energy Score | Variogram Score | En el MCS 95% |
+|---|---:|---:|---:|---|
+| DCC-GARCH | **0.020834** | **0.100393** | **0.634607** | CRPS, Energy, Variogram |
+| Student-t | 0.020904 | 0.100780 | 0.654249 | CRPS |
+| Gaussiano | 0.020934 | 0.100845 | 0.661880 | — |
+| Histórico EWMA | 0.020969 | 0.101302 | 0.654289 | — |
+| MM-BCD | 0.020990 | 0.101292 | 0.654383 | — |
 
-MM frente al Gaussiano en CRPS obtuvo una diferencia de `+0.000056`, IC95 `[-0.000019, 0.000138]` y `p_Holm=0.595`: no hay diferencia estadísticamente distinguible. El Model Confidence Set al 95% deja a MM **fuera** en CRPS y Energy Score, y **dentro** en Variogram Score, donde además supera al Gaussiano de forma distinguible (`-0.007497`, `p_Holm=0.004`).
+**DCC-GARCH domina las tres reglas de scoring** y es el único modelo dentro del Model Confidence Set en Energy y Variogram Score. MM-BCD queda fuera en las tres, con los tres contrastes significativos tras Holm (CRPS `p=0.008`, Energy `p=0.005`, Variogram `p=0.005`).
 
-El diagnóstico de calibración identifica el mecanismo: MM alcanza la mejor razón de dispersión de los cuatro modelos (`0.995` contra un ideal de `1.000`) y a la vez el histograma PIT menos uniforme. Ajustar los cuatro primeros momentos no equivale a ajustar la distribución, y las reglas de scoring propias evalúan la forma completa.
+Este control usa deliberadamente un conjunto de información más rico: se estima sobre la dinámica diaria y se proyecta al horizonte, mientras que los demás reciben solo los momentos terminales. La asimetría es el punto — superar a un gaussiano estático es un listón mucho más bajo que superar al estándar de la literatura de pronóstico multivariado.
 
-> **Corrección metodológica respecto de v0.5.0.** Los grados de libertad del Student-t eran una constante no estimada (`6.0`). Al estimarlos por verosimilitud en cada origen —el rango resultante es 12 a 25— tres conclusiones de v0.5.0 dejan de sostenerse: la ventaja de MM en Energy Score frente al histórico y sus desventajas en Variogram frente a Student-t e histórico. El detalle está en [research/RESULTS_20260813.md](research/RESULTS_20260813.md).
+El contraste entre diseños es en sí un hallazgo: en el split único, con un solo ajuste proyectado 2.5 años, **DCC-GARCH queda último en CRPS**; recalibrado en cada origen, queda primero. El valor del modelo está en condicionar al estado actual, y un ajuste congelado lo desperdicia.
+
+El diagnóstico de calibración identifica por qué MM no compensa: alcanza la mejor razón de dispersión de todos los modelos (`0.995` contra un ideal de `1.000`) y a la vez el histograma PIT menos uniforme. Ajustar los cuatro primeros momentos no equivale a ajustar la distribución, y las reglas de scoring propias evalúan la forma completa.
+
+> **Correcciones metodológicas acumuladas.** En v0.6.0, los grados de libertad del Student-t eran una constante no estimada (`6.0`); estimarlos por verosimilitud en cada origen invalidó tres conclusiones de v0.5.0. En v0.7.0 se añade DCC-GARCH como cuarto control y MM pasa a quedar fuera del conjunto de confianza en las tres reglas. El detalle está en [research/RESULTS_20260814.md](research/RESULTS_20260814.md).
 
 ![Estabilidad temporal de CRPS](docs/assets/rolling-origin-crps.png)
 
@@ -42,9 +47,11 @@ flowchart LR
     C --> D["Targets EWMA por fold"]
     D --> E["MM-BCD"]
     D --> F["Gaussian / Student-t / histórico"]
+    C --> K["DCC-GARCH sobre dinámica diaria"]
     E --> G["CRPS / Energy / Variogram / VaR"]
     F --> G
-    G --> H["Bootstrap temporal + Holm"]
+    K --> G
+    G --> H["Bootstrap + Holm + MCS + DM-HAC"]
     E --> I["Portafolios + costos"]
     I --> J["Linaje y snapshot SHA-256"]
     H --> J
@@ -55,11 +62,11 @@ flowchart LR
 - Horizonte: retorno terminal compuesto a cinco días.
 - Rolling-origin expansivo: 2023, 2024, 2025 y 2026-H1.
 - Todos los modelos se recalibran en cada fold usando solo datos anteriores, incluidos los grados de libertad del Student-t y la contracción de covarianza.
-- Inferencia: moving-block bootstrap de 5.000 muestras con ancho de bloque elegido por Politis-White, corrección Holm sobre nueve contrastes y Diebold-Mariano con varianza HAC como verificación independiente.
+- Inferencia: moving-block bootstrap de 5.000 muestras con ancho de bloque elegido por Politis-White, corrección Holm sobre los doce contrastes y Diebold-Mariano con varianza HAC como verificación independiente.
 - Model Confidence Set al 95% para identificar qué modelos no son descartables como óptimos.
 - Diagnósticos de calibración PIT con soporte igualado entre modelos.
 - Sensibilidad separada de liquidez seleccionada exclusivamente con métricas in-sample.
-- 159 pruebas automatizadas, Ruff y Pyright sin errores, y nueve etapas de linaje verificadas.
+- 178 pruebas automatizadas, Ruff y Pyright sin errores, y nueve etapas de linaje verificadas.
 
 El protocolo completo está en [research/PROTOCOL.md](research/PROTOCOL.md) y los cortes rolling-origin están congelados en [research/rolling_origin.yaml](research/rolling_origin.yaml).
 
@@ -72,7 +79,7 @@ src/mm_ipsa/
 ├── data/           # descarga, calidad y transformación temporal
 ├── evaluation/     # scoring rules, inferencia pareada, MCS y calibración
 ├── mm/             # objetivo, gradientes, BCD y diagnósticos
-├── models/         # controles Gaussian, Student-t e histórico EWMA
+├── models/         # controles Gaussian, Student-t, histórico EWMA y DCC-GARCH
 ├── portfolio/      # optimización y baselines robustos
 ├── cli.py          # comando público mm-ipsa
 ├── pipeline.py     # orquestación, reanudación y snapshots
@@ -129,7 +136,8 @@ Un test verde prueba contratos de software y trazabilidad; no prueba rentabilida
 
 - [Informe de investigación en PDF](research/build/MM_Research_Report.pdf)
 - [Fuente LaTeX del informe](research/MM_Research_Report.tex)
-- [Resultados actuales](research/RESULTS_20260813.md)
+- [Resultados actuales](research/RESULTS_20260814.md)
+- [Resultados de v0.6.0, superados](research/RESULTS_20260813.md)
 - [Resultados de v0.5.0, superados](research/RESULTS_20260810.md)
 - [Guía de implementación](research/IMPLEMENTATION_GUIDE.md)
 - [Referencias](research/REFERENCES.md)

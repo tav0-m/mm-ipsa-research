@@ -310,12 +310,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ),
                 f"scores por observacion agregan al resumen: {universe}",
             )
+            # Tres scoring rules por cada control declarado. Fijar el numero en
+            # nueve ataba el contrato a tener exactamente tres controles.
+            expected_contrasts = 3 * len(cfg["benchmarks"]["include"])
             verifier.check(
-                len(differences) == 9
+                len(differences) == expected_contrasts
                 and int(differences["registered_primary"].sum()) == 1
                 and (differences["difference_direction"] == "focal_minus_benchmark").all()
                 and (differences["n_observations"] == len(oos)).all(),
-                f"nueve contrastes pareados y primario unico: {universe}",
+                f"contrastes pareados ({expected_contrasts}) y primario unico: {universe}",
             )
             verifier.check(
                 bool(differences[["pvalue_raw", "pvalue_holm"]].apply(
@@ -492,7 +495,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             inference_cfg = rolling_cfg["inference"]
             verifier.check(
-                bool(len(differences) == 9
+                bool(len(differences) == 3 * len(cfg["benchmarks"]["include"])
                 and int(differences["registered_primary"].sum()) == 1
                 and (differences["n_groups"] == len(expected_fold_ids)).all()
                 and (differences["n_observations"] == total_windows).all()

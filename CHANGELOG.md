@@ -2,6 +2,41 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.7.0] - 2026-08-14
+
+Incorpora el competidor que faltaba. Los datos crudos no cambian.
+
+### Añadido
+
+- **DCC-GARCH como cuarto control** (Engle, 2002), estimado en dos etapas sin
+  dependencias nuevas: GARCH(1,1) por activo con variance targeting y
+  cuasi-verosimilitud gaussiana, más correlación condicional dinámica sobre los
+  residuos estandarizados. Las innovaciones de simulación son t multivariadas
+  con grados de libertad estimados de los residuos.
+- Ambas etapas se validan recuperando parámetros conocidos de datos simulados.
+- El control se reestima en cada origen del rolling-origin y en el universo
+  líquido, y su diagnóstico de ajuste se persiste por fold.
+
+### Resultado
+
+- **DCC-GARCH obtiene el mejor valor en las tres reglas de scoring** y gana tres
+  de los cuatro folds en CRPS. Es el único modelo dentro del Model Confidence
+  Set en Energy y Variogram Score.
+- MM-BCD queda fuera del conjunto en las tres reglas, con los tres contrastes
+  significativos tras Holm.
+- La posición de DCC-GARCH depende del diseño de evaluación: último en CRPS bajo
+  un ajuste único proyectado 2.5 años, primero al recalibrarse en cada origen.
+
+### Corregido
+
+- Los contratos de verificación derivan el número de contrastes de la
+  configuración en lugar de fijarlo en nueve, que ataba el protocolo a tener
+  exactamente tres controles.
+- La portada de release deriva la versión y el número de pruebas en lugar de
+  llevarlos escritos a mano, donde ya habían quedado obsoletos.
+- `release_assets` tolera controles no catalogados en vez de fallar con
+  `KeyError`.
+
 ## [0.6.0] - 2026-08-13
 
 Release de rigor metodológico. Los datos crudos no cambian —la descarga se

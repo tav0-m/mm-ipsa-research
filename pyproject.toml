@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mm-ipsa-research"
-version = "0.6.0"
+version = "0.7.0"
 description = "Independent research platform for moment-matching scenario generation and portfolio evaluation"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"

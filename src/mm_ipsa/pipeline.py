@@ -369,13 +369,12 @@ def step_benchmarks(cfg: dict):
         history_weights,
     )
     out = Path(cfg["paths"]["data_raw"])
-    (out / "student_t_df_estimation.json").write_text(
-        json.dumps(student_t_report, indent=2), encoding="utf-8"
-    )
+    labels = cfg["asset_labels"]
     print(
         f"  student_t: nu={student_t_df:.3f} (modo={student_t_report['student_t_df_mode']})"
     )
-    models = generate_benchmarks(
+    daily_is = _read_returns(out / "daily_returns.csv", labels)
+    models, benchmark_diagnostics = generate_benchmarks(
         moments,
         covariance,
         terminal.to_numpy(),
@@ -383,6 +382,21 @@ def step_benchmarks(cfg: dict):
         n_scenarios=int(benchmark_cfg["N_scenarios"]),
         seed=int(benchmark_cfg["seed"]),
         student_t_df=student_t_df,
+        daily_returns=daily_is.to_numpy(),
+        horizon=int(cfg["data"]["H"]),
+        include=list(benchmark_cfg["include"]),
+    )
+    if benchmark_diagnostics:
+        student_t_report.update(benchmark_diagnostics)
+        print(
+            "  dcc_garch: a={dcc_a:.4f}, b={dcc_b:.4f}, "
+            "persistencia={dcc_persistence:.4f}, nu_innovaciones={innovation_df:.2f}".format(
+                **benchmark_diagnostics
+            )
+        )
+    # Se escribe despues de incorporar el diagnostico del ajuste DCC-GARCH.
+    (out / "student_t_df_estimation.json").write_text(
+        json.dumps(student_t_report, indent=2), encoding="utf-8"
     )
     labels = cfg["asset_labels"]
     for name, (scenarios, probabilities) in models.items():

@@ -377,10 +377,7 @@ def run_liquidity_robustness(
         covariance,
         history_weights,
     )
-    (output / "student_t_df_estimation.json").write_text(
-        json.dumps(student_t_report, indent=2), encoding="utf-8"
-    )
-    benchmarks = generate_benchmarks(
+    benchmarks, benchmark_diagnostics = generate_benchmarks(
         moments,
         covariance,
         terminal_is.to_numpy(),
@@ -388,6 +385,14 @@ def run_liquidity_robustness(
         n_scenarios=int(benchmark_cfg["N_scenarios"]),
         seed=int(benchmark_cfg["seed"]),
         student_t_df=student_t_df,
+        daily_returns=daily_is[labels].to_numpy(),
+        horizon=int(main_cfg["data"]["H"]),
+        include=list(benchmark_cfg["include"]),
+    )
+    # Se escribe despues de incorporar el diagnostico del ajuste DCC-GARCH.
+    student_t_report.update(benchmark_diagnostics)
+    (output / "student_t_df_estimation.json").write_text(
+        json.dumps(student_t_report, indent=2), encoding="utf-8"
     )
     models: dict[str, tuple[np.ndarray, np.ndarray]] = {
         "MM": (mm_scenarios, mm_probabilities),
