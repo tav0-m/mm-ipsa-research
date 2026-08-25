@@ -1,3 +1,8 @@
 """MM-IPSA Research: generación y evaluación reproducible de escenarios."""
 
-__version__ = "0.5.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("mm-ipsa-research")
+except PackageNotFoundError:
+    __version__ = "0+unknown"

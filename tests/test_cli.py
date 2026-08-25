@@ -1,6 +1,7 @@
 import contextlib
 import io
 import unittest
+from importlib.metadata import version
 
 from mm_ipsa import __version__
 from mm_ipsa.cli import main as cli_main
@@ -14,7 +15,7 @@ class TestCLI(unittest.TestCase):
             exit_code = cli_main(["--version"])
         self.assertEqual(exit_code, 0)
         self.assertEqual(stream.getvalue().strip(), f"mm-ipsa {__version__}")
-        self.assertEqual(__version__, "0.5.0")
+        self.assertEqual(__version__, version("mm-ipsa-research"))
 
     def test_unknown_command_returns_usage_error(self):
         stdout = io.StringIO()

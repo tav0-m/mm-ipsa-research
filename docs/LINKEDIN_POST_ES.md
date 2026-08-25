@@ -1,74 +1,80 @@
 # Publicación para LinkedIn
 
-Agregué a mi investigación el benchmark que cualquier revisor habría exigido
-primero. Mi modelo perdió contra él en las tres métricas.
+Estoy desarrollando **MM-IPSA Research**, una investigación independiente sobre
+generación de escenarios probabilísticos para 15 acciones chilenas.
 
-La pregunta del proyecto es sencilla y molesta:
+La pregunta central es directa: **¿reproducir casi exactamente la media, la
+covarianza, la asimetría y la curtosis produce mejores pronósticos fuera de
+muestra?**
 
-**¿Ajustar casi exactamente los primeros cuatro momentos y la covarianza produce
-mejores escenarios financieros fuera de muestra?**
+Mi modelo, MM-BCD, genera 500 escenarios mediante ajuste de momentos y
+optimización por descenso en bloques. Lo comparé con cuatro benchmarks:
+Gaussiano, Student-t, histórico EWMA y DCC-GARCH.
 
-Implementé MM-BCD —generación de escenarios discretos por ajuste de momentos vía
-descenso en bloques— sobre 15 acciones chilenas, con validación rolling-origin de
-cuatro folds y 169 ventanas no solapadas de cinco días.
+La evaluación principal usa un protocolo rolling-origin expansivo, cuatro folds
+y 169 ventanas no solapadas de cinco días. Cada modelo se recalibra al inicio de
+cada fold usando únicamente información disponible hasta esa fecha.
 
-Durante meses lo comparé contra tres controles: Gaussiano, Student-t e histórico
-EWMA. Todos comparten un defecto que tardé en ver: **son distribuciones
-estáticas**. Ninguno modela cómo evoluciona la volatilidad ni la dependencia
-dentro del horizonte. Ganarle a un gaussiano estático es un listón bajo, y yo ni
-siquiera lo estaba superando.
+## Qué muestran los cuatro gráficos
 
-Así que implementé DCC-GARCH (Engle, 2002), el estándar de la literatura de
-pronóstico multivariado financiero. Dos etapas: GARCH(1,1) por activo con
-variance targeting, y correlación condicional dinámica sobre los residuos
-estandarizados.
+**1. Desempeño agregado.** DCC-GARCH obtiene la menor pérdida en CRPS, Energy
+Score y Variogram Score. MM-BCD no transforma su ajuste casi exacto de momentos
+en superioridad predictiva.
 
-El resultado, en validación rolling-origin:
+**2. Estabilidad temporal.** DCC-GARCH gana tres de los cuatro folds en CRPS,
+pero queda quinto en 2024; Student-t gana ese período. El resultado agregado es
+favorable, aunque no es uniforme en el tiempo.
 
-- DCC-GARCH obtiene el mejor CRPS, Energy Score y Variogram Score.
-- Es el único modelo dentro del Model Confidence Set al 95% en dos de las tres.
-- MM-BCD queda fuera en las tres, con los contrastes significativos tras Holm.
+**3. Incertidumbre estadística.** Frente a DCC-GARCH, la pérdida relativa de
+MM-BCD es +0,75% en CRPS, +0,90% en Energy y +3,12% en Variogram. Los tres IC95%
+quedan sobre cero y los contrastes sobreviven la corrección de Holm.
 
-El diagnóstico de calibración explica el mecanismo. MM-BCD alcanza la **mejor
-razón de dispersión de los cinco modelos** (0.995 contra un ideal de 1.000) y a
-la vez el histograma PIT menos uniforme. Ajustar cuatro momentos no equivale a
-ajustar una distribución, y las reglas de scoring propias evalúan la forma
-completa. Es más: DCC-GARCH es el modelo **más sobredisperso** de todos y gana
-igual, porque lo que decide no es la dispersión sino capturar la dependencia
-condicional.
+**4. Diagnóstico de calibración.** MM-BCD presenta el menor error de dispersión,
+pero no el mejor índice de fiabilidad PIT. DCC-GARCH gana los scores aun con una
+distribución más ancha. Ajustar correctamente la escala no equivale a ajustar la
+distribución completa ni su dependencia condicional.
 
-Hubo un hallazgo que no buscaba y que quizá sea el más útil. Bajo un ajuste único
-proyectado 2.5 años, DCC-GARCH queda **último** en CRPS. Recalibrado en cada
-origen, queda **primero**. El valor de un modelo condicional está en condicionar
-al estado actual: congelarlo lo vuelve peor que una distribución estática. La
-conclusión sobre un modelo dinámico depende del protocolo de recalibración tanto
-como del modelo.
+## Retroalimentación y próximos pasos
 
-Antes de esto ya había corregido algo incómodo: los grados de libertad de mi
-control Student-t estaban fijados a mano en 6.0, idénticos para quince activos
-con curtosis muy distinta. Al estimarlos por verosimilitud en cada origen, el
-rango real resultó ser 12 a 25, y tres conclusiones que yo mismo había publicado
-dejaron de sostenerse.
+El avance más importante no es que un modelo haya ganado, sino haber construido
+una comparación capaz de mostrar cuándo y por qué mi modelo pierde. El proyecto
+ya incorpora proper scoring rules, inferencia pareada con bootstrap temporal,
+Model Confidence Set, controles de look-ahead, linaje reproducible y 178 tests.
 
-Ambos episodios enseñan lo mismo: **una comparación solo es válida si el rival
-está tan bien especificado como el candidato**. Es fácil ganarle a un benchmark
-mal calibrado, y es igual de fácil perder contra uno inflado por accidente. En
-los dos casos el número no significa nada.
+Los siguientes pasos son:
 
-La versión 0.7 incluye grados de libertad estimados en cada origen, ancho de
-bloque del bootstrap por Politis-White, contracción de covarianza por
-Ledoit-Wolf, Model Confidence Set, Diebold-Mariano con varianza HAC como ruta de
-inferencia independiente, diagnósticos PIT con soporte igualado entre modelos,
-178 tests, CI multiversión, nueve etapas de linaje y snapshots SHA-256.
+- igualar estrictamente el conjunto de información y la frecuencia de
+  recalibración de todos los modelos;
+- implementar portafolios MM completamente walk-forward antes de comparar
+  resultados de inversión;
+- evaluar benchmarks dinámicos adicionales, como cópulas, regímenes o
+  volatilidad estocástica;
+- reservar un holdout futuro realmente sellado para una evaluación
+  confirmatoria.
 
-Mi modelo no ganó. Pero ahora sé exactamente por qué, y el resultado es
-defendible.
-
-¿Qué otro control someterías a esta comparación?
+El resultado actual es evidencia de desarrollo, no una recomendación de
+inversión. El código y el protocolo están disponibles aquí:
 
 https://github.com/tav0-m/mm-ipsa-research
 
 #DataScience #QuantitativeFinance #TimeSeries #Python #OpenScience
 
-Este proyecto es investigación independiente y no constituye asesoría de
-inversión.
+---
+
+## Orden de carga de las imágenes
+
+1. `docs/assets/linkedin-v07/01-comparacion-modelos.png`
+2. `docs/assets/linkedin-v07/02-estabilidad-temporal.png`
+3. `docs/assets/linkedin-v07/03-inferencia-mm-vs-dcc.png`
+4. `docs/assets/linkedin-v07/04-calibracion-distributiva.png`
+
+## Texto alternativo sugerido
+
+1. Tabla de cinco modelos y tres reglas de scoring; DCC-GARCH presenta la menor
+   pérdida en CRPS, Energy y Variogram sobre 169 ventanas fuera de muestra.
+2. Matriz de rangos CRPS por fold; DCC-GARCH gana 2023, 2025 y 2026 H1, mientras
+   Student-t gana 2024.
+3. Diferencias relativas MM-BCD menos DCC-GARCH con intervalos al 95%; los tres
+   intervalos quedan sobre cero después de la corrección de Holm.
+4. Dispersión frente a fiabilidad PIT; MM-BCD ajusta mejor la escala, mientras
+   DCC-GARCH obtiene un menor desvío del histograma PIT.

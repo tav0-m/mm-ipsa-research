@@ -151,6 +151,7 @@ def _calibration_payload(
         ),
         "solver_events": solver.solver_events,
         "components": objective.components(scenarios, probabilities),
+        **solver.publication_report(),
     }
 
 

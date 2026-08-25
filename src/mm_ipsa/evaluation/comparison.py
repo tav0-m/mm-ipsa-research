@@ -198,6 +198,42 @@ def politis_white_block_length(
     }
 
 
+def block_bootstrap_indices(
+    n_observations: int,
+    block_size: int,
+    samples: int,
+    rng: np.random.Generator,
+    segments: list[np.ndarray] | None = None,
+) -> np.ndarray:
+    """Matriz ``(samples, n)`` de indices moving-block, generada sin bucles.
+
+    Todos los inicios de bloque se sortean de una vez y se expanden por
+    difusion, en lugar de construir una lista por replica. Con miles de
+    remuestreos el costo del interprete dominaba por completo sobre el trabajo
+    numerico real.
+
+    Cuando se entregan ``segments`` cada tramo se remuestrea por separado y
+    conserva su largo, de modo que ningun bloque cruza una frontera de fold.
+    """
+    if block_size < 1:
+        raise ValueError("block_size debe ser positivo")
+    if samples < 1:
+        raise ValueError("samples debe ser positivo")
+    pieces = [np.arange(n_observations)] if segments is None else segments
+    if any(block_size > len(piece) for piece in pieces):
+        raise ValueError("block_size no puede superar el largo de ningun segmento")
+
+    columns: list[np.ndarray] = []
+    offsets = np.arange(block_size)
+    for piece in pieces:
+        length = len(piece)
+        n_blocks = int(np.ceil(length / block_size))
+        starts = rng.integers(0, length - block_size + 1, size=(samples, n_blocks))
+        local = (starts[:, :, None] + offsets).reshape(samples, -1)[:, :length]
+        columns.append(np.asarray(piece)[local])
+    return np.concatenate(columns, axis=1)
+
+
 def newey_west_long_run_variance(
     series: np.ndarray, lag: int | None = None
 ) -> tuple[float, int]:
@@ -352,17 +388,9 @@ def moving_block_bootstrap_loss_difference(
     observed = float(difference.mean())
     centered = difference - observed
     rng = np.random.default_rng(seed)
-    bootstrap_means = np.empty(samples, dtype=float)
-    null_means = np.empty(samples, dtype=float)
-    max_start = n - block_size + 1
-    for sample in range(samples):
-        indices: list[int] = []
-        while len(indices) < n:
-            start = int(rng.integers(0, max_start))
-            indices.extend(range(start, start + block_size))
-        selected = np.asarray(indices[:n])
-        bootstrap_means[sample] = float(difference[selected].mean())
-        null_means[sample] = float(centered[selected].mean())
+    selected = block_bootstrap_indices(n, block_size, samples, rng)
+    bootstrap_means = difference[selected].mean(axis=1)
+    null_means = centered[selected].mean(axis=1)
 
     alpha = 1.0 - confidence_level
     null_low, null_high = np.quantile(
@@ -432,21 +460,11 @@ def grouped_moving_block_bootstrap_loss_difference(
     observed = float(difference.mean())
     centered = difference - observed
     rng = np.random.default_rng(seed)
-    bootstrap_means = np.empty(samples, dtype=float)
-    null_means = np.empty(samples, dtype=float)
-    for sample in range(samples):
-        selected_parts: list[np.ndarray] = []
-        for indices in group_indices:
-            n_group = len(indices)
-            sampled_local: list[int] = []
-            max_start = n_group - block_size + 1
-            while len(sampled_local) < n_group:
-                start = int(rng.integers(0, max_start))
-                sampled_local.extend(range(start, start + block_size))
-            selected_parts.append(indices[np.asarray(sampled_local[:n_group])])
-        selected = np.concatenate(selected_parts)
-        bootstrap_means[sample] = float(difference[selected].mean())
-        null_means[sample] = float(centered[selected].mean())
+    selected = block_bootstrap_indices(
+        len(difference), block_size, samples, rng, group_indices
+    )
+    bootstrap_means = difference[selected].mean(axis=1)
+    null_means = centered[selected].mean(axis=1)
 
     alpha = 1.0 - confidence_level
     null_low, null_high = np.quantile(

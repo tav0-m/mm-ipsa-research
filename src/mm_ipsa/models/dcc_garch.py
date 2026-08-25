@@ -27,8 +27,8 @@ calibra el control Student-t.
 from __future__ import annotations
 
 import numpy as np
-from scipy.linalg import solve_triangular
 from scipy.optimize import minimize
+from scipy.signal import lfilter
 
 from mm_ipsa.models.benchmarks import estimate_student_t_df, nearest_psd
 
@@ -142,45 +142,74 @@ def _normalise_to_correlation(matrices: np.ndarray) -> np.ndarray:
     return matrices / (diagonal[..., :, None] * diagonal[..., None, :])
 
 
+def _dcc_shocks(z: np.ndarray, unconditional: np.ndarray) -> np.ndarray:
+    """Entradas del filtro DCC, independientes de ``(a, b)``.
+
+    Restando la matriz incondicional y desplazando un periodo, la recursion se
+    convierte en un filtro lineal cuyo insumo no cambia entre evaluaciones de la
+    verosimilitud. Reconstruirlo en cada llamada era una parte apreciable del
+    costo del ajuste.
+    """
+    shocks = np.zeros((len(z), z.shape[1], z.shape[1]), dtype=float)
+    outer = z[:, :, None] * z[:, None, :]
+    shocks[1:] = outer[:-1] - unconditional
+    return shocks
+
+
 def _dcc_quasi_log_likelihood_core(
     z: np.ndarray,
-    outer_products: np.ndarray,
+    shocks: np.ndarray,
     unconditional: np.ndarray,
     a: float,
     b: float,
 ) -> float:
-    """Nucleo de la cuasi-verosimilitud con los productos externos ya calculados.
+    """Cuasi-verosimilitud DCC evaluada sin recorrer el tiempo en Python.
 
-    ``z_t z_t'`` no depende de ``(a, b)``, de modo que recalcularlo en cada
-    evaluacion multiplicaba el costo del ajuste sin aportar nada. Se recibe
-    precalculado desde el llamador.
+    La recursion ``Q_t = (1-a-b) Qbar + a z_{t-1} z_{t-1}' + b Q_{t-1}`` es un
+    filtro IIR de primer orden: con ``D_t = Q_t - Qbar`` se reduce a
+    ``D_t = b D_{t-1} + a (z_{t-1} z_{t-1}' - Qbar)``, que ``lfilter`` resuelve
+    en C sobre toda la serie. Hecho eso, la factorizacion de Cholesky y la forma
+    cuadratica se calculan por lote.
+
+    La sustitucion hacia adelante recorre los ``n`` activos, no las ``T``
+    observaciones: reutiliza la factorizacion ya disponible y resulta varias
+    veces mas rapida que resolver el sistema completo.
     """
     if a < 0 or b < 0 or a + b >= 1.0:
         return -np.inf
-    q = unconditional.copy()
-    baseline = (1.0 - a - b) * unconditional
-    total = 0.0
-    for t in range(len(z)):
-        scale = np.sqrt(np.maximum(np.diag(q), 1e-300))
-        # Con R = D^-1 Q D^-1 se tiene R^-1 = D Q^-1 D, de modo que la forma
-        # cuadratica es (D z)' Q^-1 (D z): el vector se MULTIPLICA por la escala.
-        # Y log|R| = log|Q| - 2 sum(log s). Asi basta factorizar Q una vez;
-        # slogdet mas solve factorizaria dos veces la misma matriz.
-        scaled = z[t] * scale
-        try:
-            cholesky = np.linalg.cholesky(q)
-        except np.linalg.LinAlgError:
-            return -np.inf
-        diagonal = np.diag(cholesky)
-        if not np.all(diagonal > 0):
-            return -np.inf
-        solved = solve_triangular(cholesky, scaled, lower=True, check_finite=False)
-        total += (
-            2.0 * float(np.sum(np.log(diagonal)))
-            - 2.0 * float(np.sum(np.log(scale)))
-            + float(solved @ solved)
+
+    correlation_paths = unconditional + lfilter([a], [1.0, -b], shocks, axis=0)
+    diagonal = np.diagonal(correlation_paths, axis1=-2, axis2=-1)
+    if not np.all(diagonal > 0.0):
+        return -np.inf
+    scale = np.sqrt(diagonal)
+    scaled = z * scale
+
+    try:
+        factor = np.linalg.cholesky(correlation_paths)
+    except np.linalg.LinAlgError:
+        return -np.inf
+    pivots = np.diagonal(factor, axis1=-2, axis2=-1)
+    if not np.all(pivots > 0.0):
+        return -np.inf
+
+    solved = np.empty_like(scaled)
+    solved[:, 0] = scaled[:, 0] / pivots[:, 0]
+    for asset in range(1, z.shape[1]):
+        accumulated = np.einsum(
+            "tj,tj->t", factor[:, asset, :asset], solved[:, :asset]
         )
-        q = baseline + a * outer_products[t] + b * q
+        solved[:, asset] = (scaled[:, asset] - accumulated) / pivots[:, asset]
+
+    total = float(
+        np.sum(
+            2.0 * np.log(pivots).sum(axis=1)
+            - 2.0 * np.log(scale).sum(axis=1)
+            + (solved**2).sum(axis=1)
+        )
+    )
+    if not np.isfinite(total):
+        return -np.inf
     return -0.5 * total
 
 
@@ -195,8 +224,9 @@ def dcc_quasi_log_likelihood(
     """
     z = np.asarray(standardized, dtype=float)
     unconditional = nearest_psd(np.cov(z, rowvar=False, bias=True))
-    outer_products = z[:, :, None] * z[:, None, :]
-    return _dcc_quasi_log_likelihood_core(z, outer_products, unconditional, a, b)
+    return _dcc_quasi_log_likelihood_core(
+        z, _dcc_shocks(z, unconditional), unconditional, a, b
+    )
 
 
 def fit_dcc(standardized: np.ndarray) -> dict[str, float]:
@@ -209,11 +239,11 @@ def fit_dcc(standardized: np.ndarray) -> dict[str, float]:
 
     # Constantes respecto de (a, b): se calculan una sola vez para todo el ajuste.
     unconditional = nearest_psd(np.cov(z, rowvar=False, bias=True))
-    outer_products = z[:, :, None] * z[:, None, :]
+    shocks = _dcc_shocks(z, unconditional)
 
     def negative(parameters: np.ndarray) -> float:
         a, b = _decode_persistence(parameters, 0.999)
-        value = _dcc_quasi_log_likelihood_core(z, outer_products, unconditional, a, b)
+        value = _dcc_quasi_log_likelihood_core(z, shocks, unconditional, a, b)
         return -value if np.isfinite(value) else 1e12
 
     best: dict[str, float] | None = None

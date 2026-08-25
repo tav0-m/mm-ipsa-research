@@ -74,6 +74,28 @@ def _rolling_block_sizes_are_valid(
     )
 
 
+def _stationarity_residuals(calibration: dict) -> tuple[float, float, str]:
+    """Residuos que deben cumplir el umbral, segun el modo de solucion.
+
+    Con ``ensemble`` la solucion publicada es una mezcla y su gradiente agrupado
+    no es cero por construccion; lo que debe verificarse es que cada miembro sea
+    un optimo estacionario.
+    """
+    mode = str(calibration.get("solution_mode", "best"))
+    if mode == "ensemble":
+        return (
+            float(calibration.get("member_x_gradient_inf", np.inf)),
+            float(calibration.get("member_p_tangent_gradient_inf", np.inf)),
+            "por miembro del ensemble",
+        )
+    stationarity = calibration.get("stationarity", {})
+    return (
+        float(stationarity.get("x_gradient_inf", np.inf)),
+        float(stationarity.get("p_tangent_gradient_inf", np.inf)),
+        "de la solucion publicada",
+    )
+
+
 class Verifier:
     """Acumula fallos de contrato e imprime cada comprobacion a medida que ocurre."""
 
@@ -177,8 +199,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         p = np.load(mm_paths[1])
         parameters = target_parameters(cfg["mm"])
         moments, covariance, _ = compute_targets(terminal, daily, **parameters)
-        objective = MMObjective(moments, covariance, objective_weights(cfg["mm"]), int(cfg["mm"]["N_scenarios"]))
-        verifier.check(x.shape == (int(cfg["mm"]["N_scenarios"]), len(labels)), "shape escenarios", str(x.shape))
+        # Con solution_mode=ensemble la solucion publicada mezcla varios starts,
+        # de modo que el soporte es un multiplo de N_scenarios en vez de N exacto.
+        objective = MMObjective(moments, covariance, objective_weights(cfg["mm"]), len(x))
+        base = int(cfg["mm"]["N_scenarios"])
+        verifier.check(
+            x.ndim == 2
+            and x.shape[1] == len(labels)
+            and x.shape[0] % base == 0
+            and x.shape[0] >= base,
+            "shape escenarios (multiplo de N_scenarios)",
+            str(x.shape),
+        )
         verifier.check(p.shape == (len(x),), "shape probabilidades", str(p.shape))
         verifier.check(np.isfinite(x).all() and np.isfinite(p).all(), "escenarios finitos")
         verifier.check(bool(np.all(p >= 0) and np.isclose(p.sum(), 1.0)), "simplex de probabilidades")
@@ -211,9 +243,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 calibration.get("best_start_converged") is True,
                 "mejor start alcanza criterio de convergencia",
             )
-            stationarity = calibration.get("stationarity", {})
-            x_residual = float(stationarity.get("x_gradient_inf", np.inf))
-            p_residual = float(stationarity.get("p_tangent_gradient_inf", np.inf))
+            x_residual, p_residual, scope = _stationarity_residuals(calibration)
             verifier.check(
                 np.isfinite(x_residual) and x_residual <= float(cfg["mm"]["x_stationarity_tol"]),
                 "residuo de estacionariedad X",
@@ -364,7 +394,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             liquid_x = np.load(robustness / "mm_scenarios_x.npy")
             liquid_p = np.load(robustness / "mm_probabilities_p.npy")
             verifier.check(
-                liquid_x.shape == (int(cfg["mm"]["N_scenarios"]), len(expected_assets))
+                liquid_x.ndim == 2
+                and liquid_x.shape[1] == len(expected_assets)
+                and liquid_x.shape[0] % int(cfg["mm"]["N_scenarios"]) == 0
                 and liquid_p.shape == (len(liquid_x),),
                 "shape MM del universo liquido",
                 f"{liquid_x.shape}",
@@ -385,13 +417,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             liquid_calibration = json.loads(
                 (robustness / "mm_calibration_metrics.json").read_text(encoding="utf-8")
             )
-            stationarity = liquid_calibration.get("stationarity", {})
+            liquid_x_residual, liquid_p_residual, _ = _stationarity_residuals(
+                liquid_calibration
+            )
             verifier.check(
                 liquid_calibration.get("best_start_converged") is True
-                and float(stationarity.get("x_gradient_inf", np.inf))
-                <= float(cfg["mm"]["x_stationarity_tol"])
-                and float(stationarity.get("p_tangent_gradient_inf", np.inf))
-                <= float(cfg["mm"]["p_stationarity_tol"]),
+                and liquid_x_residual <= float(cfg["mm"]["x_stationarity_tol"])
+                and liquid_p_residual <= float(cfg["mm"]["p_stationarity_tol"]),
                 "convergencia y estacionariedad MM del universo liquido",
             )
 

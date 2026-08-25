@@ -93,6 +93,9 @@ class BCDSolver:
         self.p_inner_tol    = float(cfg_mm.get("p_inner_tol", 1e-8))
         self.patience       = int(cfg_mm.get("convergence_patience", 3))
         self.strict_solver  = bool(cfg_mm.get("strict_solver", True))
+        self.solution_mode  = str(cfg_mm.get("solution_mode", "best"))
+        if self.solution_mode not in {"best", "ensemble"}:
+            raise ValueError("solution_mode debe ser best o ensemble")
         self.acceptance_tol = float(cfg_mm.get("acceptance_tol", 1e-10))
         self.x_stationarity_tol = float(cfg_mm.get("x_stationarity_tol", np.inf))
         self.p_stationarity_tol = float(cfg_mm.get("p_stationarity_tol", np.inf))
@@ -179,7 +182,9 @@ class BCDSolver:
     def _kl_uniform(self, p: np.ndarray) -> float:
         """KL(p || uniforme), no negativa y comparable entre corridas."""
         p_safe = np.clip(np.asarray(p, dtype=float), 1e-300, None)
-        return float(np.sum(p_safe * np.log(p_safe * self.N)))
+        # La referencia uniforme se toma sobre el soporte efectivo de p, que en
+        # modo ensemble es mayor que el de un solo start.
+        return float(np.sum(p_safe * np.log(p_safe * len(p_safe))))
 
     def regularized_objective(self, x: np.ndarray, p: np.ndarray) -> float:
         """G(x,p) = F(x,p) + lambda * KL(p || uniforme)."""
@@ -191,7 +196,7 @@ class BCDSolver:
         gradient_p = self.obj.grad_p(x, p).copy()
         if self.entropy_lambda > 0:
             gradient_p += self.entropy_lambda * (
-                np.log(np.clip(p * self.N, 1e-300, None)) + 1.0
+                np.log(np.clip(p * len(p), 1e-300, None)) + 1.0
             )
         # En un óptimo interior sujeto a sum(p)=1, grad_p es constante.
         tangent_p = gradient_p - float(np.mean(gradient_p))
@@ -610,11 +615,98 @@ class BCDSolver:
             accepted = sum(event.get("accepted_by_descent", False) for event in self.solver_events)
             print(f"  solver_events={len(self.solver_events)}, aceptados_por_descenso={accepted}")
 
+        if self.solution_mode == "ensemble":
+            report = self.ensemble_report()
+            if report["ensemble_members"] >= 1:
+                best_x, best_p = self.ensemble_solution()
+                print(
+                    f"  ensemble={int(report['ensemble_members'])}/"
+                    f"{int(report['ensemble_candidates'])} starts, "
+                    f"escenarios={best_x.shape[0]}, "
+                    f"dispersion_G={report['ensemble_g_spread']:.3e}"
+                )
+            else:
+                # Sin starts elegibles se conserva la solucion ya seleccionada,
+                # que arriba respeto strict_solver o su respaldo explicito. Un
+                # fallo aqui contradiria esa politica en vez de aplicarla.
+                print("  [warn] sin starts elegibles; se publica la solucion unica")
+
         if out_path is not None:
             self._save_history(Path(out_path))
 
         return best_x, best_p
 
+
+    # -----------------------------------------------------------------------
+    def eligible_starts(self) -> list[dict]:
+        """Starts que convergieron y superaron los umbrales de estacionariedad."""
+        return [
+            record
+            for record in self.all_starts
+            if record["converged"] and record["stationarity_pass"]
+        ]
+
+    def ensemble_solution(self) -> tuple[np.ndarray, np.ndarray]:
+        """Mezcla equiponderada de los starts elegibles.
+
+        El multi-start ya calcula varias soluciones y descarta todas menos la de
+        menor G. Ese descarte es el paso fragil del procedimiento: el objetivo no
+        es convexo, y diferencias numericas minimas cambian que optimo local se
+        selecciona, moviendo los scores fuera de muestra tanto como los efectos
+        que el estudio mide.
+
+        Mezclar las soluciones elimina esa eleccion sin coste adicional. Una
+        mezcla de distribuciones con la misma media conserva media y covarianza
+        exactamente, y los momentos superiores casi exactamente, de modo que el
+        ajuste de momentos no se degrada.
+        """
+        eligible = self.eligible_starts()
+        if not eligible:
+            raise RuntimeError("No hay starts elegibles para formar el ensemble")
+        weight = 1.0 / len(eligible)
+        scenarios = np.vstack([record["x"] for record in eligible])
+        probabilities = np.concatenate(
+            [record["p"] * weight for record in eligible]
+        )
+        return scenarios, probabilities / probabilities.sum()
+
+    def publication_report(self) -> dict[str, float | str]:
+        """Que se publica y con que garantia de convergencia.
+
+        En modo ``best`` la garantia es la estacionariedad de la solucion misma.
+        En modo ``ensemble`` la mezcla no es un punto estacionario del problema
+        agrupado -y no tiene por que serlo-, de modo que la garantia relevante
+        pasa a ser que TODOS sus miembros lo sean. Es un contrato mas exigente,
+        no uno mas laxo, y se reporta por separado para que la verificacion
+        contraste lo que corresponde en cada modo.
+        """
+        eligible = self.eligible_starts()
+        report: dict[str, float | str] = {"solution_mode": self.solution_mode}
+        report.update(self.ensemble_report())
+        if eligible:
+            report["member_x_gradient_inf"] = max(
+                float(record["stationarity"]["x_gradient_inf"]) for record in eligible
+            )
+            report["member_p_tangent_gradient_inf"] = max(
+                float(record["stationarity"]["p_tangent_gradient_inf"])
+                for record in eligible
+            )
+        else:
+            report["member_x_gradient_inf"] = float("nan")
+            report["member_p_tangent_gradient_inf"] = float("nan")
+        return report
+
+    def ensemble_report(self) -> dict[str, float]:
+        """Tamano del ensemble y dispersion del objetivo entre sus miembros."""
+        eligible = self.eligible_starts()
+        finals = np.array([record["G_fin"] for record in eligible], dtype=float)
+        return {
+            "ensemble_members": float(len(eligible)),
+            "ensemble_candidates": float(len(self.all_starts)),
+            "ensemble_g_min": float(finals.min()) if len(finals) else float("nan"),
+            "ensemble_g_max": float(finals.max()) if len(finals) else float("nan"),
+            "ensemble_g_spread": float(finals.max() - finals.min()) if len(finals) else float("nan"),
+        }
 
     # -----------------------------------------------------------------------
     def summary_table(self) -> pd.DataFrame:

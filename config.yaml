@@ -69,6 +69,11 @@ mm:
   p_step_scale: 1.0
   p_inner_tol: 1.0e-8
   start_strategy: independent
+  # 'ensemble' mezcla los starts elegibles que el multi-start ya calcula en vez
+  # de publicar solo el de menor G. Sin coste adicional reduce a un tercio la
+  # sensibilidad de los scores OOS a la semilla del solver, que es del mismo
+  # orden que varias de las diferencias entre modelos que el estudio contrasta.
+  solution_mode: ensemble
   strict_solver: true
   acceptance_tol: 1.0e-10
   moment_weights:

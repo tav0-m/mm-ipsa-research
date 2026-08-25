@@ -251,5 +251,76 @@ class TestBCDDegenerateBehaviour(unittest.TestCase):
             self.assertGreaterEqual(value, 0.0)
 
 
+class TestEnsembleSolution(unittest.TestCase):
+    """El ensemble sustituye la eleccion del mejor start por su mezcla."""
+
+    def _solver(self, **overrides):
+        # El ensemble solo admite starts que superaron convergencia y
+        # estacionariedad. En este objetivo sintetico el cambio relativo se
+        # estanca cerca de 1e-5, de modo que la tolerancia por defecto de 1e-8
+        # nunca se alcanza y ningun start calificaria.
+        objective, scenarios = _small_objective()
+        config = _base_config(
+            scenarios, n_starts=4, bcd_max_iter=25, tol=1e-4, **overrides
+        )
+        return BCDSolver(objective, config, n_workers=1), objective, scenarios
+
+    def test_rejects_unknown_solution_mode(self):
+        objective, scenarios = _small_objective()
+        with self.assertRaises(ValueError):
+            BCDSolver(objective, _base_config(scenarios, solution_mode="promedio"))
+
+    def test_ensemble_support_is_a_multiple_of_the_scenario_count(self):
+        solver, _, scenarios = self._solver(solution_mode="ensemble")
+        x, p = solver.solve()
+        members = len(solver.eligible_starts())
+        self.assertGreaterEqual(members, 1)
+        self.assertEqual(x.shape[0], members * scenarios)
+        self.assertEqual(p.shape, (members * scenarios,))
+
+    def test_ensemble_stays_on_the_simplex(self):
+        solver, _, _ = self._solver(solution_mode="ensemble")
+        _, p = solver.solve()
+        self.assertAlmostEqual(float(p.sum()), 1.0, places=12)
+        self.assertGreaterEqual(float(p.min()), 0.0)
+
+    def test_ensemble_preserves_mean_and_covariance(self):
+        # Una mezcla de distribuciones con la misma media conserva media y
+        # covarianza; es lo que permite promediar sin degradar el ajuste.
+        solver, _, _ = self._solver(solution_mode="ensemble")
+        x, p = solver.solve()
+        eligible = solver.eligible_starts()
+        means = np.array([record["p"] @ record["x"] for record in eligible])
+        np.testing.assert_allclose(p @ x, means.mean(axis=0), atol=1e-12)
+
+    def test_best_mode_returns_a_single_start(self):
+        solver, _, scenarios = self._solver(solution_mode="best")
+        x, _ = solver.solve()
+        self.assertEqual(x.shape[0], scenarios)
+
+    def test_report_counts_members_and_spread(self):
+        solver, _, _ = self._solver(solution_mode="ensemble")
+        solver.solve()
+        report = solver.ensemble_report()
+        self.assertEqual(report["ensemble_members"], float(len(solver.eligible_starts())))
+        self.assertLessEqual(report["ensemble_members"], report["ensemble_candidates"])
+        self.assertGreaterEqual(report["ensemble_g_spread"], 0.0)
+
+    def test_ensemble_fails_loudly_without_eligible_starts(self):
+        objective, scenarios = _small_objective()
+        config = _base_config(
+            scenarios, solution_mode="ensemble", strict_solver=False,
+            bcd_max_iter=25, tol=1e-4,
+            x_stationarity_tol=1e-30, p_stationarity_tol=1e-30,
+        )
+        solver = BCDSolver(objective, config, n_workers=1)
+        # solve() debe caer al respaldo en vez de fallar; llamar al ensemble
+        # directamente sigue siendo un error explicito.
+        solver.solve()
+        self.assertEqual(solver.eligible_starts(), [])
+        with self.assertRaises(RuntimeError):
+            solver.ensemble_solution()
+
+
 if __name__ == "__main__":
     unittest.main()

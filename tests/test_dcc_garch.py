@@ -2,7 +2,10 @@ import unittest
 
 import numpy as np
 
+from mm_ipsa.models.benchmarks import nearest_psd
 from mm_ipsa.models.dcc_garch import (
+    _dcc_quasi_log_likelihood_core,
+    _dcc_shocks,
     dcc_garch_terminal,
     dcc_quasi_log_likelihood,
     fit_dcc,
@@ -163,6 +166,70 @@ def _panel(rows: int = 600, assets: int = 3, seed: int = 4) -> np.ndarray:
     return np.column_stack(
         [common + rng.standard_normal(rows) * 0.010 for _ in range(assets)]
     )
+
+
+def _naive_dcc_quasi_log_likelihood(z: np.ndarray, a: float, b: float) -> float:
+    """Recorre el tiempo en Python, tal como define el modelo Engle (2002).
+
+    Existe solo como referencia de la version vectorizada: es lenta pero se lee
+    directamente contra la formula, de modo que cualquier divergencia numerica
+    delata un error en la reescritura con filtro IIR y Cholesky por lote.
+    """
+    unconditional = np.cov(z, rowvar=False, bias=True)
+    q = unconditional.copy()
+    total = 0.0
+    for step in range(len(z)):
+        scale = np.sqrt(np.diag(q))
+        correlation = q / np.outer(scale, scale)
+        factor = np.linalg.cholesky(correlation)
+        solved = np.linalg.solve(factor, z[step])
+        total += 2.0 * np.sum(np.log(np.diag(factor))) + float(solved @ solved)
+        q = (
+            (1.0 - a - b) * unconditional
+            + a * np.outer(z[step], z[step])
+            + b * q
+        )
+    return -0.5 * total
+
+
+class TestVectorisedLikelihoodMatchesDefinition(unittest.TestCase):
+    """La version rapida debe coincidir con la recursion escrita a mano."""
+
+    def test_matches_naive_recursion_across_the_parameter_space(self):
+        standardized = _simulate_dcc(0.05, 0.90, 220, 4, 17)
+        for a, b in ((0.013, 0.670), (0.050, 0.900), (0.002, 0.970), (0.200, 0.500)):
+            with self.subTest(a=a, b=b):
+                self.assertAlmostEqual(
+                    dcc_quasi_log_likelihood(standardized, a, b),
+                    _naive_dcc_quasi_log_likelihood(standardized, a, b),
+                    places=8,
+                )
+
+    def test_shocks_do_not_depend_on_the_parameters(self):
+        # El insumo del filtro se precalcula una sola vez por ajuste; si pasara a
+        # depender de (a, b) el resultado quedaria congelado en el primer valor.
+        standardized = _simulate_dcc(0.05, 0.90, 150, 3, 4)
+        unconditional = nearest_psd(np.cov(standardized, rowvar=False, bias=True))
+        shocks = _dcc_shocks(standardized, unconditional)
+        first = _dcc_quasi_log_likelihood_core(
+            standardized, shocks, unconditional, 0.02, 0.90
+        )
+        second = _dcc_quasi_log_likelihood_core(
+            standardized, shocks, unconditional, 0.10, 0.60
+        )
+        np.testing.assert_allclose(
+            shocks, _dcc_shocks(standardized, unconditional)
+        )
+        self.assertNotAlmostEqual(first, second, places=6)
+
+    def test_first_shock_is_zero_so_the_filter_starts_at_the_unconditional(self):
+        standardized = _simulate_dcc(0.04, 0.92, 80, 3, 6)
+        unconditional = nearest_psd(np.cov(standardized, rowvar=False, bias=True))
+        shocks = _dcc_shocks(standardized, unconditional)
+        np.testing.assert_allclose(shocks[0], 0.0)
+        np.testing.assert_allclose(
+            shocks[1], np.outer(standardized[0], standardized[0]) - unconditional
+        )
 
 
 class TestDccGarchSimulation(unittest.TestCase):

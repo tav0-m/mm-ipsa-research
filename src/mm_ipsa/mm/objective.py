@@ -101,19 +101,38 @@ class MMObjective:
         mu : (n,)    media ponderada
         C  : (n, n)  covarianza ponderada
         """
+        m, mu, C, _ = self._moments_with_deviations(x, p)
+        return m, mu, C
+
+    # ──────────────────────────────────────────────────────────────────────
+    def _moments_with_deviations(
+        self, x: np.ndarray, p: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Momentos, media, covarianza y las desviaciones ya calculadas.
+
+        Las potencias se obtienen multiplicando en cadena en vez de elevar con
+        ``**``: ``np.power`` es un orden de magnitud mas lento que un producto
+        elemento a elemento, y esta rutina se evalua miles de veces por cada
+        busqueda por retroceso del paso-p. La diferencia es solo de reasociacion
+        en punto flotante.
+
+        Devolver ``dev`` evita que los gradientes lo reconstruyan.
+        """
         mu  = p @ x                          # (n,)
         dev = x - mu[np.newaxis, :]          # (N, n)
+        squared = dev * dev
+        cubed = squared * dev
 
         m    = np.empty((4, self.n))
         m[0] = mu
-        for k in range(1, 4):
-            m[k] = p @ (dev ** (k + 1))     # (n,)
+        m[1] = p @ squared
+        m[2] = p @ cubed
+        m[3] = p @ (squared * squared)
 
         # C_{il} = Σ_j p_j · dev_{ji} · dev_{jl}
-        # Vectorizado: C = devᵀ · diag(p) · dev
-        C = (p[:, None] * dev).T @ dev      # (n, n)  ← rápido
+        C = (p[:, None] * dev).T @ dev      # (n, n)
 
-        return m, mu, C
+        return m, mu, C, dev
 
     # ──────────────────────────────────────────────────────────────────────
     def evaluate(self, x: np.ndarray, p: np.ndarray) -> float:
@@ -145,10 +164,15 @@ class MMObjective:
     def _validate_state(self, x: np.ndarray, p: np.ndarray) -> None:
         x = np.asarray(x)
         p = np.asarray(p)
-        if x.shape != (self.N, self.n):
-            raise ValueError(f"x debe tener shape {(self.N, self.n)}")
-        if p.shape != (self.N,):
-            raise ValueError(f"p debe tener shape {(self.N,)}")
+        # El objetivo esta definido para cualquier tamano de soporte: N se guarda
+        # como el tamano de calibracion, pero la matematica no lo usa. Exigirlo
+        # impediria evaluar una solucion de ensemble, cuyo soporte es un multiplo
+        # de N. Lo que si debe cumplirse es la consistencia entre x y p y el
+        # numero de activos.
+        if x.ndim != 2 or x.shape[1] != self.n:
+            raise ValueError(f"x debe tener {self.n} columnas; recibido {x.shape}")
+        if p.ndim != 1 or p.shape[0] != x.shape[0]:
+            raise ValueError("p debe tener un valor por escenario de x")
         if not np.all(np.isfinite(x)) or not np.all(np.isfinite(p)):
             raise ValueError("x o p contienen NaN o infinitos")
         if np.min(p) < -1e-10:
@@ -174,18 +198,18 @@ class MMObjective:
           + 4 wΣ · Σₗ δCᵣₗ · devₛₗ
         ]
         """
-        m, mu, C = self.compute_moments(x, p)
-        dev    = x - mu[np.newaxis, :]      # (N, n)
+        m, _, C, dev = self._moments_with_deviations(x, p)
+        squared = dev * dev
         diff_m = m - self.M                  # (4, n)
         diff_C = C - self.Sigma_tgt          # (n, n)
         diff_C_w = self.CW * diff_C          # scaled covariance residuals
         ps     = p[:, None]                  # (N, 1)  para broadcasting
 
         # ── Términos de momentos ─────────────────────────────────────────
-        g  = 2 * self.W[0] * diff_m[0] * ps                         # m1
-        g += 4 * self.W[1] * diff_m[1] * ps * dev                   # m2
-        g += 6 * self.W[2] * diff_m[2] * ps * (dev**2 - m[1])       # m3
-        g += 8 * self.W[3] * diff_m[3] * ps * (dev**3 - m[2])       # m4
+        g  = 2 * self.W[0] * diff_m[0] * ps                          # m1
+        g += 4 * self.W[1] * diff_m[1] * ps * dev                    # m2
+        g += 6 * self.W[2] * diff_m[2] * ps * (squared - m[1])       # m3
+        g += 8 * self.W[3] * diff_m[3] * ps * (squared * dev - m[2]) # m4
 
         # ── Término de covarianza ────────────────────────────────────────
         # El Frobenius simetrico aporta dos terminos equivalentes.
@@ -205,17 +229,18 @@ class MMObjective:
           + 2 W₄ᵢ δm₄ᵢ · (devₛᵢ⁴ − 4 xₛᵢ m₃ᵢ)
         ] + 2wΣ · Σᵢⱼ δCᵢⱼ · devₛᵢ · devₛⱼ
         """
-        m, mu, C = self.compute_moments(x, p)
-        dev    = x - mu[np.newaxis, :]       # (N, n)
+        m, _, C, dev = self._moments_with_deviations(x, p)
+        squared = dev * dev
+        cubed = squared * dev
         diff_m = m - self.M                   # (4, n)
         diff_C = C - self.Sigma_tgt           # (n, n)
         diff_C_w = self.CW * diff_C           # scaled covariance residuals
 
         # ── Términos de momentos  [(N,n) @ (n,)] → (N,) ─────────────────
-        g  = 2 * x               @ (self.W[0] * diff_m[0])   # m1
-        g += 2 * (dev**2)        @ (self.W[1] * diff_m[1])   # m2
-        g += 2 * (dev**3 - 3*x*m[1]) @ (self.W[2] * diff_m[2]) # m3
-        g += 2 * (dev**4 - 4*x*m[2]) @ (self.W[3] * diff_m[3]) # m4
+        g  = 2 * x       @ (self.W[0] * diff_m[0])                    # m1
+        g += 2 * squared @ (self.W[1] * diff_m[1])                    # m2
+        g += 2 * (cubed - 3*x*m[1])           @ (self.W[2] * diff_m[2])  # m3
+        g += 2 * (squared*squared - 4*x*m[2]) @ (self.W[3] * diff_m[3])  # m4
 
         # ── Término de covarianza: einsum 'si,ij,sj->s' ──────────────────
         # diag( dev · diff_C · devᵀ )

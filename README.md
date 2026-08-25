@@ -10,11 +10,11 @@ Plataforma de investigación cuantitativa independiente para estudiar generació
 
 La pregunta no es si MM-BCD reproduce media, covarianza y momentos superiores —lo hace con alta precisión—, sino si esa calibración mejora pronósticos probabilísticos y decisiones económicas fuera de muestra frente a controles Gaussian, Student-t, histórico EWMA y DCC-GARCH.
 
-**Versión pública actual:** `v0.7.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
+**Versión pública actual:** `v0.8.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
 
 ## Resultado principal
 
-La complejidad no produjo una superioridad general. En validación rolling-origin con cuatro folds, 169 ventanas no solapadas de cinco días y recalibración completa de todos los modelos en cada origen:
+La complejidad no produjo una superioridad general. En validación rolling-origin con cuatro folds, 169 ventanas no solapadas de cinco días y recalibración completa de todos los modelos al inicio de cada fold:
 
 | Modelo | CRPS pooled | Energy Score | Variogram Score | En el MCS 95% |
 |---|---:|---:|---:|---|
@@ -22,17 +22,17 @@ La complejidad no produjo una superioridad general. En validación rolling-origi
 | Student-t | 0.020904 | 0.100780 | 0.654249 | CRPS |
 | Gaussiano | 0.020934 | 0.100845 | 0.661880 | — |
 | Histórico EWMA | 0.020969 | 0.101302 | 0.654289 | — |
-| MM-BCD | 0.020990 | 0.101292 | 0.654383 | — |
+| MM-BCD | 0.020954 | 0.101048 | 0.652445 | — |
 
-**DCC-GARCH domina las tres reglas de scoring** y es el único modelo dentro del Model Confidence Set en Energy y Variogram Score. MM-BCD queda fuera en las tres, con los tres contrastes significativos tras Holm (CRPS `p=0.008`, Energy `p=0.005`, Variogram `p=0.005`).
+**DCC-GARCH domina las tres reglas de scoring** y es el único modelo dentro del Model Confidence Set en Energy y Variogram Score. MM-BCD queda fuera en las tres. El cuadro es matizado: en CRPS no hay ninguna diferencia distinguible entre modelos, MM supera de forma significativa al Gaussiano y al histórico en dependencia entre activos, y pierde frente al control dinámico en Energy y Variogram.
 
 Este control usa deliberadamente un conjunto de información más rico: se estima sobre la dinámica diaria y se proyecta al horizonte, mientras que los demás reciben solo los momentos terminales. La asimetría es el punto — superar a un gaussiano estático es un listón mucho más bajo que superar al estándar de la literatura de pronóstico multivariado.
 
-El contraste entre diseños es en sí un hallazgo: en el split único, con un solo ajuste proyectado 2.5 años, **DCC-GARCH queda último en CRPS**; recalibrado en cada origen, queda primero. El valor del modelo está en condicionar al estado actual, y un ajuste congelado lo desperdicia.
+El split único ubica a DCC-GARCH último en CRPS, mientras el rolling-origin lo ubica primero. Este cambio **no identifica por sí solo el efecto de recalibrar**: el split contiene 121 ventanas desde 2024 y el rolling-origin 169 desde 2023, con calendarios que no coinciden por completo. Se conserva como hipótesis para una ablación futura sobre exactamente las mismas observaciones.
 
-El diagnóstico de calibración identifica por qué MM no compensa: alcanza la mejor razón de dispersión de todos los modelos (`0.995` contra un ideal de `1.000`) y a la vez el histograma PIT menos uniforme. Ajustar los cuatro primeros momentos no equivale a ajustar la distribución, y las reglas de scoring propias evalúan la forma completa.
+En los diagnósticos PIT rolling-origin ponderados por ventanas, MM-BCD queda más cerca de la dispersión ideal (`0.964` frente a `1.000`), pero no obtiene el mejor índice de fiabilidad (`0.484`, frente a `0.463` del Student-t). Ajustar la escala no equivale a ajustar la distribución completa, y las reglas de scoring propias evalúan ambas dimensiones.
 
-> **Correcciones metodológicas acumuladas.** En v0.6.0, los grados de libertad del Student-t eran una constante no estimada (`6.0`); estimarlos por verosimilitud en cada origen invalidó tres conclusiones de v0.5.0. En v0.7.0 se añade DCC-GARCH como cuarto control y MM pasa a quedar fuera del conjunto de confianza en las tres reglas. El detalle está en [research/RESULTS_20260814.md](research/RESULTS_20260814.md).
+> **Correcciones metodológicas acumuladas.** En v0.6.0, los grados de libertad del Student-t eran una constante no estimada (`6.0`); estimarlos por verosimilitud en cada origen invalidó tres conclusiones de v0.5.0. En v0.7.0 se añade DCC-GARCH como cuarto control y MM queda fuera del conjunto de confianza en las tres reglas. En v0.8.0 la solución de MM pasa a publicarse como mezcla de los starts elegibles, porque la elección del mejor start introducía una variación del mismo orden que los efectos contrastados. El detalle está en [research/RESULTS_20260825.md](research/RESULTS_20260825.md).
 
 ![Estabilidad temporal de CRPS](docs/assets/rolling-origin-crps.png)
 
@@ -66,7 +66,7 @@ flowchart LR
 - Model Confidence Set al 95% para identificar qué modelos no son descartables como óptimos.
 - Diagnósticos de calibración PIT con soporte igualado entre modelos.
 - Sensibilidad separada de liquidez seleccionada exclusivamente con métricas in-sample.
-- 178 pruebas automatizadas, Ruff y Pyright sin errores, y nueve etapas de linaje verificadas.
+- 188 pruebas automatizadas, Ruff y Pyright sin errores, y nueve etapas de linaje verificadas.
 
 El protocolo completo está en [research/PROTOCOL.md](research/PROTOCOL.md) y los cortes rolling-origin están congelados en [research/rolling_origin.yaml](research/rolling_origin.yaml).
 
@@ -136,7 +136,8 @@ Un test verde prueba contratos de software y trazabilidad; no prueba rentabilida
 
 - [Informe de investigación en PDF](research/build/MM_Research_Report.pdf)
 - [Fuente LaTeX del informe](research/MM_Research_Report.tex)
-- [Resultados actuales](research/RESULTS_20260814.md)
+- [Resultados actuales](research/RESULTS_20260825.md)
+- [Resultados de v0.7.0, superados](research/RESULTS_20260814.md)
 - [Resultados de v0.6.0, superados](research/RESULTS_20260813.md)
 - [Resultados de v0.5.0, superados](research/RESULTS_20260810.md)
 - [Guía de implementación](research/IMPLEMENTATION_GUIDE.md)

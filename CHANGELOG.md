@@ -2,6 +2,47 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.8.0] - 2026-08-25
+
+Version centrada en eficiencia. El trabajo destapo un defecto metodologico y su
+correccion. Los datos crudos no cambian y los cuatro controles quedan identicos.
+
+### Corregido
+
+- **La solucion de MM se publica como mezcla de los starts elegibles**, no como
+  el de menor G. El multi-start ya calculaba varias soluciones y descartaba
+  todas menos una; ese descarte era el paso fragil, porque el objetivo es no
+  convexo y la eleccion se movia con diferencias numericas irrelevantes. Medido
+  con ocho semillas, esa variacion era del mismo orden que varios de los efectos
+  contrastados. La mezcla no cuesta computo adicional, reduce la sensibilidad a
+  la semilla 3.1x en CRPS y 2.4x en Energy, y mejora los tres scores de MM.
+- El contrato de estacionariedad pasa a exigirse **por miembro del ensemble** en
+  vez de sobre la solucion publicada. Es mas estricto: antes bastaba un punto
+  estacionario, ahora deben serlo todos.
+- MMObjective valida consistencia entre x y p en lugar de un tamano de soporte
+  fijo, y la referencia uniforme de la KL usa el soporte efectivo.
+
+### Rendimiento
+
+Tres reescrituras, verificadas como numericamente equivalentes:
+
+- Segunda etapa DCC como filtro IIR de primer orden resuelto en C, con Cholesky
+  y formas cuadraticas por lote: **6.2x**.
+- Indices del bootstrap por bloques generados por difusion en vez de una lista
+  por replica: **13.7x** en los doce contrastes, **8.6x** en el Model Confidence
+  Set.
+- Potencias de las desviaciones por multiplicacion encadenada en lugar de
+  np.power: **10.2x** en la calibracion MM.
+
+Suite de pruebas de 69 s a 7 s; pipeline completo de 263 s a 173 s.
+
+### Anadido
+
+- Test de regresion que contrasta la verosimilitud DCC vectorizada contra una
+  implementacion ingenua escrita directamente desde la formula.
+- Diagnostico de publicacion con tamano del ensemble, dispersion del objetivo
+  entre miembros y residuos de estacionariedad por miembro.
+
 ## [0.7.0] - 2026-08-14
 
 Incorpora el competidor que faltaba. Los datos crudos no cambian.

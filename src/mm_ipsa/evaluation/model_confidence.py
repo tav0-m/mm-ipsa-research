@@ -23,18 +23,15 @@ def block_bootstrap_indices(
 ) -> np.ndarray:
     """Indices de moving-block bootstrap, opcionalmente confinados por grupo.
 
-    Cuando se entregan ``groups`` cada segmento se remuestrea de forma
-    independiente y conserva su largo, por lo que ningun bloque concatena el
-    final de un fold con el inicio de otro.
+    Delega en la implementacion vectorizada compartida con el modulo de
+    comparacion para que ambas rutas de inferencia remuestreen exactamente igual.
     """
-    if block_size < 1:
-        raise ValueError("block_size debe ser positivo")
-    if samples < 1:
-        raise ValueError("samples debe ser positivo")
+    from mm_ipsa.evaluation.comparison import (
+        block_bootstrap_indices as shared_indices,
+    )
 
-    if groups is None:
-        segments = [np.arange(n_observations)]
-    else:
+    segments = None
+    if groups is not None:
         group_values = np.asarray(list(groups), dtype=object)
         if len(group_values) != n_observations:
             raise ValueError("groups debe tener el largo de las observaciones")
@@ -42,22 +39,7 @@ def block_bootstrap_indices(
             np.flatnonzero(group_values == group)
             for group in dict.fromkeys(group_values.tolist())
         ]
-    if any(len(segment) < block_size for segment in segments):
-        raise ValueError("block_size no puede superar el largo de ningun segmento")
-
-    output = np.empty((samples, n_observations), dtype=int)
-    for sample in range(samples):
-        parts: list[np.ndarray] = []
-        for segment in segments:
-            length = len(segment)
-            picked: list[int] = []
-            max_start = length - block_size + 1
-            while len(picked) < length:
-                start = int(rng.integers(0, max_start))
-                picked.extend(range(start, start + block_size))
-            parts.append(segment[np.asarray(picked[:length])])
-        output[sample] = np.concatenate(parts)
-    return output
+    return shared_indices(n_observations, block_size, samples, rng, segments)
 
 
 def _pairwise_statistics(

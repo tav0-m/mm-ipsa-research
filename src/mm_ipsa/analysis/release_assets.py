@@ -218,6 +218,7 @@ def plot_pooled_crps(pooled: pd.DataFrame, output: Path) -> None:
     """Compara el CRPS pooled como exceso respecto del mejor modelo."""
     data = pooled.sort_values("mean_crps", ascending=False).copy()
     best = float(data["mean_crps"].min())
+    winner = model_label(str(data.loc[data["mean_crps"].idxmin(), "model"]))
     data["excess_bp"] = 10_000 * (data["mean_crps"] - best)
     labels = [model_label(model) for model in data["model"]]
     colors = [model_color(model) for model in data["model"]]
@@ -237,7 +238,7 @@ def plot_pooled_crps(pooled: pd.DataFrame, output: Path) -> None:
     axis.set_xlim(0, maximum * 1.55)
     axis.set_xlabel("Exceso de CRPS respecto del mejor modelo (puntos base)")
     axis.set_title(
-        "Resultado pooled fuera de muestra\nStudent-t obtuvo el menor CRPS",
+        f"Resultado pooled fuera de muestra\n{winner} obtuvo el menor CRPS",
         fontsize=17,
         fontweight="bold",
         pad=20,
@@ -375,6 +376,286 @@ def plot_calibration_vs_prediction(
     plt.close(figure)
 
 
+def _linkedin_figure(subtitle: str, title: str):
+    """Lienzo cuadrado para una evidencia cuantitativa del carrusel."""
+    figure = plt.figure(figsize=(10, 10), dpi=120, facecolor="white")
+    figure.text(0.06, 0.95, subtitle, fontsize=12, color="#6B7280", va="top")
+    figure.text(
+        0.06,
+        0.90,
+        title,
+        fontsize=24,
+        fontweight="bold",
+        color="#111827",
+        va="top",
+    )
+    return figure
+
+
+def plot_linkedin_scorecard(pooled: pd.DataFrame, output: Path) -> None:
+    """Tabla compacta de las tres reglas propias bajo el protocolo principal."""
+    metrics = ["mean_crps", "energy_score", "variogram_score"]
+    data = pooled.sort_values("mean_crps").reset_index(drop=True)
+    rows = [
+        [
+            model_label(str(row["model"])),
+            f"{float(row['mean_crps']):.5f}",
+            f"{float(row['energy_score']):.5f}",
+            f"{float(row['variogram_score']):.4f}",
+        ]
+        for _, row in data.iterrows()
+    ]
+    figure = _linkedin_figure(
+        "Rolling-origin · 169 ventanas OOS · horizonte 5 días · menor es mejor",
+        "DCC-GARCH lidera las 3 métricas",
+    )
+    axis = figure.add_axes((0.055, 0.12, 0.89, 0.66))
+    axis.axis("off")
+    table = axis.table(
+        cellText=rows,
+        colLabels=["Modelo", "CRPS", "Energy", "Variogram"],
+        cellLoc="center",
+        colLoc="center",
+        loc="center",
+        colWidths=[0.34, 0.22, 0.22, 0.22],
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(13)
+    table.scale(1.0, 3.1)
+    for column in range(4):
+        cell = table[(0, column)]
+        cell.set_facecolor("#111827")
+        cell.set_edgecolor("white")
+        cell.get_text().set_color("white")
+        cell.get_text().set_fontweight("bold")
+    for row_index, (_, row) in enumerate(data.iterrows(), start=1):
+        name = str(row["model"])
+        for column in range(4):
+            cell = table[(row_index, column)]
+            cell.set_edgecolor("#E5E7EB")
+            cell.set_linewidth(0.8)
+            cell.set_facecolor("#F9FAFB" if row_index % 2 else "white")
+            cell.get_text().set_color("#111827")
+        table[(row_index, 0)].get_text().set_color(model_color(name))
+        table[(row_index, 0)].get_text().set_fontweight("bold")
+        for metric_column, metric in enumerate(metrics, start=1):
+            if np.isclose(float(row[metric]), float(data[metric].min())):
+                best_cell = table[(row_index, metric_column)]
+                best_cell.set_facecolor("#DCFCE7")
+                best_cell.get_text().set_fontweight("bold")
+    figure.text(
+        0.06,
+        0.08,
+        "Los tres scores evalúan dimensiones complementarias de la distribución.",
+        fontsize=11.5,
+        color="#6B7280",
+    )
+    figure.savefig(output, dpi=120, facecolor="white")
+    plt.close(figure)
+
+
+def plot_linkedin_temporal_ranks(scores: pd.DataFrame, output: Path) -> None:
+    """Matriz de rangos CRPS que hace visible la excepción temporal de 2024."""
+    fold_order = list(dict.fromkeys(scores["fold_id"].astype(str).tolist()))
+    weighted = scores.assign(
+        weighted_loss=scores["mean_crps"] * scores["n_observations"]
+    )
+    pooled_order = (
+        weighted.groupby("model")[["weighted_loss", "n_observations"]]
+        .sum()
+        .assign(score=lambda frame: frame["weighted_loss"] / frame["n_observations"])
+        .sort_values("score")
+        .index.tolist()
+    )
+    matrix = (
+        scores.assign(fold_id=scores["fold_id"].astype(str))
+        .pivot(index="model", columns="fold_id", values="mean_crps")
+        .loc[pooled_order, fold_order]
+        .rank(axis=0, method="min")
+    )
+    rank_values = matrix.to_numpy(dtype=float)
+    dcc_row = pooled_order.index("dcc_garch")
+    dcc_wins = int(np.sum(rank_values[dcc_row] == 1))
+
+    figure = _linkedin_figure(
+        "Rango por CRPS dentro de cada fold · 1 = mejor",
+        f"DCC-GARCH gana {dcc_wins} de {len(fold_order)} períodos",
+    )
+    axis = figure.add_axes((0.24, 0.18, 0.68, 0.58))
+    image = axis.imshow(rank_values, cmap="RdYlGn_r", vmin=1, vmax=5, aspect="auto")
+    del image
+    for row in range(matrix.shape[0]):
+        for column in range(matrix.shape[1]):
+            rank = int(rank_values[row, column])
+            axis.text(
+                column,
+                row,
+                f"{rank}.º",
+                ha="center",
+                va="center",
+                fontsize=16,
+                fontweight="bold" if rank == 1 else "normal",
+                color="#111827",
+            )
+    axis.set_xticks(np.arange(len(fold_order)), [fold.replace("H1", " H1") for fold in fold_order])
+    axis.set_yticks(np.arange(len(pooled_order)), [model_label(name) for name in pooled_order])
+    axis.tick_params(axis="x", labelsize=13, length=0, pad=10)
+    axis.tick_params(axis="y", labelsize=13, length=0, pad=10)
+    axis.set_xticks(np.arange(-0.5, len(fold_order), 1), minor=True)
+    axis.set_yticks(np.arange(-0.5, len(pooled_order), 1), minor=True)
+    axis.grid(which="minor", color="white", linewidth=3)
+    axis.tick_params(which="minor", bottom=False, left=False)
+    for spine in axis.spines.values():
+        spine.set_visible(False)
+    figure.text(
+        0.06,
+        0.08,
+        "Student-t gana 2024; el liderazgo de DCC-GARCH no es uniforme.",
+        fontsize=11.5,
+        color="#6B7280",
+    )
+    figure.savefig(output, dpi=120, facecolor="white")
+    plt.close(figure)
+
+
+def plot_linkedin_paired_mm_vs_dcc(differences: pd.DataFrame, output: Path) -> None:
+    """Forest plot comparable entre métricas mediante diferencias relativas."""
+    order = ["mean_crps", "energy_score", "variogram_score"]
+    labels = {"mean_crps": "CRPS", "energy_score": "Energy", "variogram_score": "Variogram"}
+    data = (
+        differences.loc[differences["benchmark_model"] == "dcc_garch"]
+        .set_index("metric")
+        .loc[order]
+        .reset_index()
+    )
+    denominator = data["benchmark_mean_loss"].to_numpy(dtype=float)
+    values = 100 * data["mean_difference"].to_numpy(dtype=float) / denominator
+    lows = 100 * data["ci_low"].to_numpy(dtype=float) / denominator
+    highs = 100 * data["ci_high"].to_numpy(dtype=float) / denominator
+    positions = np.arange(len(data))
+
+    figure = _linkedin_figure(
+        "Diferencia relativa MM-BCD − DCC-GARCH · IC95%",
+        "MM-BCD queda atrás en las 3 métricas",
+    )
+    axis = figure.add_axes((0.20, 0.18, 0.70, 0.58))
+    axis.errorbar(
+        values,
+        positions,
+        xerr=np.vstack([values - lows, highs - values]),
+        fmt="none",
+        ecolor="#6B7280",
+        elinewidth=2.2,
+        capsize=7,
+    )
+    axis.scatter(values, positions, s=160, color=model_color("MM"), zorder=3)
+    axis.axvline(0.0, color="#111827", linewidth=1.4)
+    span = max(float(highs.max()), 1.0)
+    for position, value, high, pvalue in zip(
+        positions,
+        values,
+        highs,
+        data["pvalue_holm"].to_numpy(dtype=float),
+    ):
+        axis.text(
+            float(high) + span * 0.035,
+            position,
+            f"+{float(value):.2f}% · p={float(pvalue):.3f}",
+            va="center",
+            fontsize=12.5,
+            color="#374151",
+        )
+    axis.set_yticks(positions, [labels[metric] for metric in order])
+    axis.invert_yaxis()
+    axis.set_xlim(min(-0.3, float(lows.min()) - 0.2), span * 1.42)
+    axis.set_xlabel("Pérdida relativa de MM-BCD frente a DCC-GARCH (%)", fontsize=12)
+    axis.tick_params(labelsize=13, colors="#111827", length=0)
+    axis.grid(axis="x", color="#E5E7EB", linewidth=0.8)
+    axis.spines[["top", "right", "left"]].set_visible(False)
+    figure.text(
+        0.06,
+        0.08,
+        "Los tres intervalos quedan sobre cero tras corrección de Holm.",
+        fontsize=11.5,
+        color="#6B7280",
+    )
+    figure.savefig(output, dpi=120, facecolor="white")
+    plt.close(figure)
+
+
+def plot_linkedin_calibration_map(
+    calibration_by_fold: pd.DataFrame,
+    fold_scores: pd.DataFrame,
+    output: Path,
+) -> None:
+    """Resume calibración rolling-origin ponderando cada fold por sus ventanas."""
+    weights = fold_scores[["fold_id", "model", "n_observations"]]
+    merged = calibration_by_fold.merge(weights, on=["fold_id", "model"], validate="one_to_one")
+    rows: list[dict[str, float | str]] = []
+    for name, group in merged.groupby("model"):
+        weight = group["n_observations"].to_numpy(dtype=float)
+        rows.append(
+            {
+                "model": str(name),
+                "scale_error_pct": float(
+                    100 * abs(np.average(group["mean_dispersion_ratio"], weights=weight) - 1)
+                ),
+                "reliability": float(
+                    np.average(group["mean_reliability_index"], weights=weight)
+                ),
+            }
+        )
+    data = pd.DataFrame(rows)
+
+    figure = _linkedin_figure(
+        "Promedio rolling-origin ponderado · menor en ambos ejes es mejor",
+        "Ajustar la escala no ajusta la distribución",
+    )
+    axis = figure.add_axes((0.16, 0.18, 0.74, 0.58))
+    offsets = {
+        "MM": (10, -20),
+        "historical_weighted": (10, 10),
+        "student_t_terminal": (-90, -20),
+        "gaussian_terminal": (10, 10),
+        "dcc_garch": (-105, 10),
+    }
+    for _, row in data.iterrows():
+        name = str(row["model"])
+        x_value = float(row["scale_error_pct"])
+        y_value = float(row["reliability"])
+        axis.scatter(
+            x_value,
+            y_value,
+            s=190,
+            color=model_color(name),
+            edgecolors="white",
+            linewidths=2,
+            zorder=3,
+        )
+        axis.annotate(
+            model_label(name),
+            (x_value, y_value),
+            xytext=offsets[name],
+            textcoords="offset points",
+            fontsize=12,
+            color="#111827",
+        )
+    axis.set_xlabel("Error de dispersión frente al ideal (%)", fontsize=12)
+    axis.set_ylabel("Índice de fiabilidad PIT", fontsize=12)
+    axis.tick_params(labelsize=11.5, colors="#374151")
+    axis.grid(color="#E5E7EB", linewidth=0.8)
+    axis.spines[["top", "right"]].set_visible(False)
+    figure.text(
+        0.06,
+        0.08,
+        "MM-BCD acierta la escala; DCC-GARCH describe mejor la forma del PIT.",
+        fontsize=11.5,
+        color="#6B7280",
+    )
+    figure.savefig(output, dpi=120, facecolor="white")
+    plt.close(figure)
+
+
 def generate_release_assets(
     rolling_dir: str | Path = "outputs/robustness/rolling_origin",
     destination: str | Path = "docs/assets",
@@ -390,6 +671,7 @@ def generate_release_assets(
     pooled = pd.read_csv(source / "probabilistic_scores_pooled.csv")
     stability = pd.read_csv(source / "model_stability_summary.csv")
     calibration = pd.read_csv(source / "fold_calibration.csv")
+    calibration_pit = pd.read_csv(source / "calibration_pit_by_fold.csv")
     metadata = json.loads((source / "experiment_metadata.json").read_text(encoding="utf-8"))
     outputs = [
         target / "rolling-origin-crps.png",
@@ -409,8 +691,22 @@ def generate_release_assets(
     plot_crps_stability_square(fold_scores, outputs[5])
     plot_paired_differences_square(differences, outputs[6])
     plot_calibration_vs_prediction(fold_scores, calibration, outputs[7])
+
+    linkedin_dir = target / "linkedin-v07"
+    linkedin_dir.mkdir(parents=True, exist_ok=True)
+    linkedin_outputs = [
+        linkedin_dir / "01-comparacion-modelos.png",
+        linkedin_dir / "02-estabilidad-temporal.png",
+        linkedin_dir / "03-inferencia-mm-vs-dcc.png",
+        linkedin_dir / "04-calibracion-distributiva.png",
+    ]
+    plot_linkedin_scorecard(pooled, linkedin_outputs[0])
+    plot_linkedin_temporal_ranks(fold_scores, linkedin_outputs[1])
+    plot_linkedin_paired_mm_vs_dcc(differences, linkedin_outputs[2])
+    plot_linkedin_calibration_map(calibration_pit, fold_scores, linkedin_outputs[3])
+
     pooled.to_csv(target / "rolling-origin-pooled-scores.csv", index=False)
-    return [*outputs, target / "rolling-origin-pooled-scores.csv"]
+    return [*outputs, *linkedin_outputs, target / "rolling-origin-pooled-scores.csv"]
 
 
 if __name__ == "__main__":

@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="MM-IPSA Research: generación de escenarios y evaluación temporal reproducible.">
   <meta name="theme-color" content="#111827">
-  <meta property="og:title" content="MM-IPSA Research · v0.7.0">
+  <meta property="og:title" content="MM-IPSA Research · v0.8.0">
   <meta property="og:description" content="Generación de escenarios y evaluación rolling-origin reproducible sobre acciones chilenas.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://tav0-m.github.io/mm-ipsa-research/">
   <meta property="og:image" content="https://raw.githubusercontent.com/tav0-m/mm-ipsa-research/main/docs/assets/linkedin-project-card.png">
-  <title>MM-IPSA Research · v0.7.0</title>
+  <title>MM-IPSA Research · v0.8.0</title>
   <style>
     :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
     body { max-width: 980px; margin: 0 auto; padding: 32px 20px 64px; line-height: 1.55; }
@@ -34,7 +34,7 @@
 </head>
 <body>
   <header>
-    <p class="status">Research release · v0.7.0 · validación de desarrollo</p>
+    <p class="status">Research release · v0.8.0 · validación de desarrollo</p>
     <h1>Generación de escenarios por ajuste de momentos</h1>
     <p>Investigación reproducible sobre si una distribución discreta MM-BCD mejora pronósticos probabilísticos y decisiones de portafolio en acciones chilenas.</p>
     <nav aria-label="Enlaces del proyecto">
@@ -46,7 +46,7 @@
   <section class="metrics" aria-label="Resumen de validación">
     <div class="metric"><strong>4</strong>folds temporales</div>
     <div class="metric"><strong>169</strong>ventanas OOS H=5</div>
-    <div class="metric"><strong>178</strong>tests automatizados</div>
+    <div class="metric"><strong>188</strong>tests automatizados</div>
     <div class="metric"><strong>9</strong>etapas de linaje</div>
   </section>
 
@@ -59,20 +59,20 @@
       <tr><td>Student-t</td><td>0.020904</td><td>0.100780</td><td>0.654249</td></tr>
       <tr><td>Gaussiano</td><td>0.020934</td><td>0.100845</td><td>0.661880</td></tr>
       <tr><td>Histórico EWMA</td><td>0.020969</td><td>0.101302</td><td>0.654289</td></tr>
-      <tr><td>MM-BCD</td><td>0.020990</td><td>0.101292</td><td>0.654383</td></tr>
+      <tr><td>MM-BCD</td><td>0.020954</td><td>0.101048</td><td>0.652445</td></tr>
     </tbody>
   </table>
 
   <h2>Evidencia gráfica</h2>
   <div class="gallery">
-    <img src="assets/linkedin-02-pooled-crps.png" alt="Exceso de CRPS pooled de cada modelo respecto de Student-t.">
-    <img src="assets/linkedin-03-temporal-crps.png" alt="Exceso de CRPS de cuatro modelos en cuatro folds temporales.">
-    <img src="assets/linkedin-04-paired-inference.png" alt="Diferencias MM menos control e intervalos de confianza para tres scoring rules.">
-    <img src="assets/linkedin-05-calibration-vs-prediction.png" alt="Objetivo de calibración in-sample frente al exceso de CRPS fuera de muestra.">
+    <img src="assets/linkedin-v07/01-comparacion-modelos.png" alt="Comparación de cinco modelos en CRPS, Energy y Variogram; DCC-GARCH obtiene el menor valor en las tres reglas.">
+    <img src="assets/linkedin-v07/02-estabilidad-temporal.png" alt="Rangos CRPS por fold; DCC-GARCH gana tres períodos y Student-t gana 2024.">
+    <img src="assets/linkedin-v07/03-inferencia-mm-vs-dcc.png" alt="Diferencias relativas MM-BCD menos DCC-GARCH con intervalos al 95 por ciento sobre cero.">
+    <img src="assets/linkedin-v07/04-calibracion-distributiva.png" alt="Error de dispersión frente a fiabilidad PIT para los cinco modelos.">
   </div>
 
   <h2>Método</h2>
-  <p>Todos los modelos se recalibran en cada origen con ventana expansiva. La evaluación usa retornos terminales no solapados, bootstrap temporal por bloques y ajuste de Holm. El pipeline conserva calidad raw, configuración, hashes, linaje y un snapshot auditable.</p>
+  <p>Todos los modelos se recalibran al inicio de cada fold con ventana expansiva. La evaluación usa retornos terminales no solapados, bootstrap temporal por bloques y ajuste de Holm. El pipeline conserva calidad raw, configuración, hashes, linaje y un snapshot auditable.</p>
 
   <h2>Límite</h2>
   <p>Las fechas ya fueron observadas durante el desarrollo. Los resultados son evidencia retrospectiva reproducible, no un test futuro sellado ni una recomendación de inversión.</p>

@@ -310,6 +310,7 @@ def step_mm(cfg: dict):
         ),
         "solver_events": solver.solver_events,
         "components": objective.components(scenarios, probabilities),
+        **solver.publication_report(),
     }
     (out / "mm_calibration_metrics.json").write_text(
         json.dumps(calibration, indent=2), encoding="utf-8"
