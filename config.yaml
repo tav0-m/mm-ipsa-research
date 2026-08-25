@@ -125,6 +125,13 @@ portfolio:
   rf: 0.0
   l2_penalty: 0.01
   transaction_cost_bps: 20.0
+  # Recalibra cada generador de escenarios en cada fecha de rebalanceo y deriva
+  # sus carteras alli mismo. Sin esto los portafolios derivados de modelos
+  # quedaban congelados frente a baselines que si se reajustaban, y H4 no era
+  # interpretable. Anade del orden de cuatro minutos al pipeline completo.
+  walk_forward_models: true
+  walk_forward_frequency: Q
+  walk_forward_min_history: 252
 
 evaluation:
   stride: 5

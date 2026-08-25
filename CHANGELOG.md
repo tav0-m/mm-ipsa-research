@@ -2,6 +2,45 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.9.0] - 2026-08-25
+
+Cierra la limitacion de diseno que las versiones anteriores declaraban
+pendiente. El experimento fue posible gracias a la optimizacion de v0.8.0.
+
+### Corregido
+
+- **Todos los generadores de escenarios se recalibran en cada fecha de
+  rebalanceo** y de cada uno se derivan las tres carteras del protocolo. Hasta
+  ahora los portafolios derivados de modelos se calibraban una vez y quedaban
+  congelados 2,5 anos, mientras los baselines ingenuos se reajustaban cada
+  trimestre. La v0.8.0 corrigio la comparacion emparejando disenos; esta corrige
+  el diseno mismo.
+- H4 pasa a contrastarse bajo un protocolo simetrico. **Ninguna de las
+  diecisiete estrategias supera al Equal Weight tras la correccion de Holm.**
+
+### Resultado
+
+- El unico contraste que sobrevive sin ajustar es la minima varianza derivada de
+  DCC-GARCH, con p de 0.0085; con Holm sobre diecisiete comparaciones queda en
+  0.144.
+- Las cuatro carteras de minima varianza derivadas de modelos son practicamente
+  indistinguibles entre si, porque todas apuntan a la misma covarianza objetivo.
+- Las variantes de minimo CVaR y maximo Sharpe rotan entre 3,2 y 5,3 veces el
+  patrimonio frente a 0,35 del Equal Weight, con intervalos de hasta mas menos
+  0,6 en Sharpe.
+
+### Anadido
+
+- Modulo de calendarios walk-forward por modelo, con tabla de trazabilidad que
+  registra filas de entrenamiento, ultimo dato usado y soporte de cada modelo en
+  cada origen.
+- Nueve pruebas del modulo, incluida la verificacion de que el entrenamiento
+  nunca alcanza la fecha de decision y de que la ventana crece de forma
+  monotona.
+
+El paso de backtest pasa de 14 s a 243 s por las diez recalibraciones; el
+pipeline completo queda en 401 s.
+
 ## [0.8.0] - 2026-08-25
 
 Version centrada en eficiencia. El trabajo destapo un defecto metodologico y su

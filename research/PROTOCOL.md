@@ -127,6 +127,8 @@ En rolling-origin, el remuestreo mantiene cada bloque dentro de su fold: ningún
 
 Portafolios: Equal Weight, inverse variance, HRP, mínima varianza regularizada, mínimo CVaR y máximo Sharpe regularizado. El backtest incluye deriva de pesos, turnover y costos explícitos. Los IC se calculan mediante moving-block bootstrap.
 
+Todos los generadores de escenarios se recalibran en cada fecha de rebalanceo usando exclusivamente observaciones anteriores, y de cada uno se derivan las tres carteras del protocolo. Esto es condición para que H4 sea interpretable: comparar asignaciones congeladas contra baselines que sí se reajustan mezcla el método de construcción con la política de rebalanceo, y ninguna diferencia resultante puede atribuirse a una u otra. Cada estrategia se contrasta contra el Equal Weight de su mismo diseño de evaluación, y Holm se aplica dentro de cada familia. La trazabilidad de los orígenes se conserva en `walk_forward_model_origins.csv`.
+
 Cada estrategia se contrasta contra el Equal Weight de su **mismo** diseño de
 evaluación. Comparar una cartera calibrada una sola vez contra un baseline que se
 recalibra cada trimestre mezcla dos efectos —el método de construcción y la

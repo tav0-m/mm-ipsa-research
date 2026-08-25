@@ -808,6 +808,26 @@ def step_backtest(cfg: dict):
         )
         designs[name] = "expanding_window_walk_forward"
 
+    # Carteras derivadas de modelos bajo el MISMO protocolo de recalibracion que
+    # los baselines. Sin esto, H4 comparaba asignaciones congeladas contra
+    # baselines que se reajustaban cada trimestre.
+    walk_forward_audit = pd.DataFrame()
+    if bool(cfg["portfolio"].get("walk_forward_models", False)):
+        from mm_ipsa.backtest.model_schedules import walk_forward_model_schedules
+
+        print("  recalibrando modelos en cada fecha de rebalanceo")
+        model_schedules, walk_forward_audit = walk_forward_model_schedules(
+            full,
+            start_oos,
+            cfg,
+            frequency=str(cfg["portfolio"].get("walk_forward_frequency", "Q")),
+            min_history=int(cfg["portfolio"].get("walk_forward_min_history", 252)),
+            progress=print,
+        )
+        for name, schedule in model_schedules.items():
+            schedules[name] = schedule
+            designs[name] = "expanding_window_walk_forward"
+
     cost_bps = float(cfg["portfolio"].get("transaction_cost_bps", 0.0))
     results, executions = {}, {}
     rows, schedule_rows = [], []
@@ -895,6 +915,10 @@ def step_backtest(cfg: dict):
     metrics_frame = pd.DataFrame(rows).sort_values("sharpe", ascending=False)
     metrics_frame.to_csv(tables / "backtest_metrics.csv", index=False)
     pd.DataFrame(schedule_rows).to_csv(tables / "walk_forward_weights.csv", index=False)
+    if not walk_forward_audit.empty:
+        walk_forward_audit.to_csv(
+            tables / "walk_forward_model_origins.csv", index=False
+        )
     bootstrap_frame.to_csv(tables / "bootstrap_sharpe_differences.csv", index=False)
     wealth_frame = pd.DataFrame(results)
     wealth_frame.to_csv(tables / "backtest_wealth.csv")
