@@ -2,6 +2,40 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.10.0] - 2026-08-25
+
+Ablacion controlada del efecto de recalibrar. Retracta una hipotesis que las
+versiones anteriores conservaban como exploratoria.
+
+### Anadido
+
+- **Ablacion frozen contra refit sobre ventanas identicas.** Ambas variantes se
+  puntuan en exactamente las mismas 169 ventanas, con el mismo universo y las
+  mismas semillas, de modo que la muestra y el calendario dejan de confundirse
+  con la actualizacion de los modelos. En el primer fold ambas coinciden por
+  construccion y el experimento lo verifica.
+- Once pruebas del modulo, incluida la comprobacion del montaje.
+
+### Resultado
+
+- **Recalibrar aporta a los cinco modelos en las tres reglas**: quince de quince
+  contrastes significativos tras Holm, con todos los intervalos sobre cero.
+- **El ranking no se invierte.** DCC-GARCH gana bajo calibracion congelada y bajo
+  recalibracion por fold. El cambio de posicion que se observaba entre el split
+  unico y el rolling-origin provenia de que ambos disenos evaluan periodos
+  distintos, no de la cadencia de reajuste.
+- DCC-GARCH se degrada dos a tres veces menos al congelarlo: 7.2 por ciento en
+  Variogram Score frente a 19 a 22 por ciento de los cuatro modelos estaticos. Un
+  modelo condicional arrastra estado que sustituye parcialmente a la
+  recalibracion externa, y ese es el mecanismo real detras de su ventaja.
+
+### Corregido
+
+- Se retira de README y RESULTS la lectura de que el protocolo de recalibracion
+  determinaba el veredicto. La ablacion la descarta.
+
+El paso rolling pasa de 74 s a 176 s; el pipeline completo queda en 509 s.
+
 ## [0.9.0] - 2026-08-25
 
 Cierra la limitacion de diseno que las versiones anteriores declaraban

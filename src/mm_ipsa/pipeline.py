@@ -1040,6 +1040,30 @@ def step_rolling_origin(cfg: dict):
         daily_oos,
         output_dir,
     )
+
+    # Ablacion controlada del efecto de recalibrar: ambas variantes se puntuan
+    # sobre exactamente las mismas ventanas, de modo que la muestra y el
+    # calendario dejan de confundirse con la actualizacion de los modelos.
+    ablation_dir = source / "robustness" / "recalibration_ablation"
+    if bool(cfg["evaluation"].get("run_recalibration_ablation", True)):
+        from mm_ipsa.analysis.recalibration_ablation import (
+            combine_daily_for_ablation,
+            run_recalibration_ablation,
+        )
+
+        print("  ablacion: frozen vs refit sobre ventanas identicas")
+        ablation = run_recalibration_ablation(
+            cfg,
+            experiment_cfg,
+            combine_daily_for_ablation(daily_is, daily_oos, cfg["asset_labels"]),
+            ablation_dir,
+        )
+        print(
+            "  [ok] ablacion: {windows_compared} ventanas comparadas, "
+            "montaje_valido={first_fold_variants_identical}".format(
+                **ablation["metadata"]
+            )
+        )
     _write_stage(
         cfg,
         "rolling_origin",

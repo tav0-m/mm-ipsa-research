@@ -10,7 +10,7 @@ Plataforma de investigación cuantitativa independiente para estudiar generació
 
 La pregunta no es si MM-BCD reproduce media, covarianza y momentos superiores —lo hace con alta precisión—, sino si esa calibración mejora pronósticos probabilísticos y decisiones económicas fuera de muestra frente a controles Gaussian, Student-t, histórico EWMA y DCC-GARCH.
 
-**Versión pública actual:** `v0.9.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
+**Versión pública actual:** `v0.10.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
 
 ## Resultado principal
 
@@ -28,11 +28,11 @@ La complejidad no produjo una superioridad general. En validación rolling-origi
 
 Este control usa deliberadamente un conjunto de información más rico: se estima sobre la dinámica diaria y se proyecta al horizonte, mientras que los demás reciben solo los momentos terminales. La asimetría es el punto — superar a un gaussiano estático es un listón mucho más bajo que superar al estándar de la literatura de pronóstico multivariado.
 
-El split único ubica a DCC-GARCH último en CRPS, mientras el rolling-origin lo ubica primero. Este cambio **no identifica por sí solo el efecto de recalibrar**: el split contiene 121 ventanas desde 2024 y el rolling-origin 169 desde 2023, con calendarios que no coinciden por completo. Se conserva como hipótesis para una ablación futura sobre exactamente las mismas observaciones.
+Una ablación controlada puntúa ambas variantes sobre **exactamente las mismas 169 ventanas**. Recalibrar aporta a los cinco modelos en las tres reglas —quince de quince contrastes significativos tras Holm—, pero **el ranking no se invierte**: DCC-GARCH gana bajo calibración congelada y bajo recalibración por fold. El cambio de posición que se observaba entre el split único y el rolling-origin provenía de que ambos diseños evalúan periodos distintos, no de la cadencia de reajuste. Lo que sí distingue al control dinámico es que se degrada dos a tres veces menos al congelarlo (7.2% en Variogram frente a 19–22% de los estáticos): arrastra estado que sustituye parcialmente a la recalibración externa.
 
 En los diagnósticos PIT rolling-origin ponderados por ventanas, MM-BCD queda más cerca de la dispersión ideal (`0.964` frente a `1.000`), pero no obtiene el mejor índice de fiabilidad (`0.484`, frente a `0.463` del Student-t). Ajustar la escala no equivale a ajustar la distribución completa, y las reglas de scoring propias evalúan ambas dimensiones.
 
-> **Correcciones metodológicas acumuladas.** En v0.6.0, los grados de libertad del Student-t eran una constante no estimada (`6.0`); estimarlos por verosimilitud en cada origen invalidó tres conclusiones de v0.5.0. En v0.7.0 se añade DCC-GARCH como cuarto control y MM queda fuera del conjunto de confianza en las tres reglas. En v0.8.0 la solución de MM pasa a publicarse como mezcla de los starts elegibles, porque la elección del mejor start introducía una variación del mismo orden que los efectos contrastados. En v0.9.0 todos los generadores se recalibran en cada fecha de rebalanceo, de modo que H4 por fin se contrasta bajo un protocolo simétrico: **ninguna de las diecisiete estrategias supera al Equal Weight tras corregir por multiplicidad**. El detalle está en [research/RESULTS_20260825.md](research/RESULTS_20260825.md).
+> **Correcciones metodológicas acumuladas.** En v0.6.0, los grados de libertad del Student-t eran una constante no estimada (`6.0`); estimarlos por verosimilitud en cada origen invalidó tres conclusiones de v0.5.0. En v0.7.0 se añade DCC-GARCH como cuarto control y MM queda fuera del conjunto de confianza en las tres reglas. En v0.8.0 la solución de MM pasa a publicarse como mezcla de los starts elegibles, porque la elección del mejor start introducía una variación del mismo orden que los efectos contrastados. En v0.9.0 todos los generadores se recalibran en cada fecha de rebalanceo, de modo que H4 por fin se contrasta bajo un protocolo simétrico: **ninguna de las diecisiete estrategias supera al Equal Weight tras corregir por multiplicidad**. En v0.10.0 una ablación controlada descarta que el cambio de ranking entre diseños se deba a la recalibración; el detalle está en [research/RESULTS_20260825.md](research/RESULTS_20260825.md).
 
 ![Estabilidad temporal de CRPS](docs/assets/rolling-origin-crps.png)
 
@@ -66,7 +66,7 @@ flowchart LR
 - Model Confidence Set al 95% para identificar qué modelos no son descartables como óptimos.
 - Diagnósticos de calibración PIT con soporte igualado entre modelos.
 - Sensibilidad separada de liquidez seleccionada exclusivamente con métricas in-sample.
-- 197 pruebas automatizadas, Ruff y Pyright sin errores, y nueve etapas de linaje verificadas.
+- 208 pruebas automatizadas, Ruff y Pyright sin errores, y nueve etapas de linaje verificadas.
 
 El protocolo completo está en [research/PROTOCOL.md](research/PROTOCOL.md) y los cortes rolling-origin están congelados en [research/rolling_origin.yaml](research/rolling_origin.yaml).
 
