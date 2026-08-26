@@ -2,6 +2,31 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.11.1] - 2026-08-26
+
+Pase de calidad de codigo. Ningun resultado cambia: los scores agregados
+coinciden con los publicados hasta el redondeo de la sexta cifra.
+
+### Cambiado
+
+- `objective.py` reescrito con nombres descriptivos. Se elimino `compute_errors`,
+  un metodo de 35 lineas sin ningun consumidor en el proyecto, que ademas
+  contenia el unico diccionario con claves en espanol y un bucle O(n^2) sobre
+  pares de activos.
+- `diagnostics.py`: `mh`/`mm` pasan a `historical`/`fitted`. La segunda era
+  especialmente confusa porque `mm` es tambien el nombre del paquete.
+  `mu_h`, `sig_h`, `sk_h`, `ku_h` y sus contrapartes reciben nombres completos.
+- `bcd.py`: se condensan los comentarios que narraban correcciones historicas y
+  se eliminan los separadores decorativos.
+
+### Eliminado
+
+- Los 22 separadores decorativos del arbol de codigo.
+- Comentarios que repetian la linea siguiente en vez de explicarla.
+
+Comentarios totales de 220 a 144. Densidad en `objective.py` de 22,5% a 2,9%; en
+`diagnostics.py` de 6,6% a 2,4%.
+
 ## [0.11.0] - 2026-08-26
 
 Congelamiento verificable para el test confirmatorio. El protocolo lo declaraba

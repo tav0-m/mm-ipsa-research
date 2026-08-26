@@ -1,80 +1,88 @@
 # Publicación para LinkedIn
 
-Estoy desarrollando **MM-IPSA Research**, una investigación independiente sobre
-generación de escenarios probabilísticos para 15 acciones chilenas.
+**MM-IPSA Research** es una investigación cuantitativa independiente sobre
+generación de escenarios probabilísticos para quince acciones chilenas.
 
-La pregunta central es directa: **¿reproducir casi exactamente la media, la
-covarianza, la asimetría y la curtosis produce mejores pronósticos fuera de
-muestra?**
+La pregunta que intenta responder es concreta: **¿reproducir con precisión la
+media, la covarianza, la asimetría y la curtosis produce mejores pronósticos
+fuera de muestra, y mejores decisiones de portafolio?**
 
-Mi modelo, MM-BCD, genera 500 escenarios mediante ajuste de momentos y
-optimización por descenso en bloques. Lo comparé con cuatro benchmarks:
-Gaussiano, Student-t, histórico EWMA y DCC-GARCH.
+Mi modelo, MM-BCD, genera escenarios discretos ajustando esos cuatro momentos por
+descenso en bloques. Lo consigue con un error relativo de 0,00%. La investigación
+existe para averiguar si esa precisión sirve de algo.
 
-La evaluación principal usa un protocolo rolling-origin expansivo, cuatro folds
-y 169 ventanas no solapadas de cinco días. Cada modelo se recalibra al inicio de
-cada fold usando únicamente información disponible hasta esa fecha.
+## Qué se construyó para responderla
 
-## Qué muestran los cuatro gráficos
+El objetivo no era ganar una comparación, sino montar una capaz de detectar
+cuándo y por qué el modelo pierde:
 
-**1. Desempeño agregado.** DCC-GARCH obtiene la menor pérdida en CRPS, Energy
-Score y Variogram Score. MM-BCD no transforma su ajuste casi exacto de momentos
-en superioridad predictiva.
+- Cuatro controles, incluido **DCC-GARCH**, el estándar de la literatura de
+  pronóstico multivariado.
+- Reglas de scoring propias —CRPS, Energy Score, Variogram Score— sobre 169
+  ventanas no solapadas y cuatro folds rolling-origin.
+- Inferencia por dos rutas independientes: bootstrap por bloques con ancho
+  elegido automáticamente, y Diebold-Mariano con varianza HAC.
+- **Model Confidence Set**, que responde qué modelos no pueden descartarse como
+  óptimos en vez de acumular comparaciones de a pares.
+- Linaje con hashes que impide publicar resultados obsoletos en silencio.
 
-**2. Estabilidad temporal.** DCC-GARCH gana tres de los cuatro folds en CRPS,
-pero queda quinto en 2024; Student-t gana ese período. El resultado agregado es
-favorable, aunque no es uniforme en el tiempo.
+## Qué encontró
 
-**3. Incertidumbre estadística.** Frente a DCC-GARCH, la pérdida relativa de
-MM-BCD es +0,75% en CRPS, +0,90% en Energy y +3,12% en Variogram. Los tres IC95%
-quedan sobre cero y los contrastes sobreviven la corrección de Holm.
+**DCC-GARCH obtiene el mejor valor en las tres reglas** y es el único dentro del
+Model Confidence Set en Energy y Variogram Score. MM-BCD queda fuera en las tres.
 
-**4. Diagnóstico de calibración.** MM-BCD presenta el menor error de dispersión,
-pero no el mejor índice de fiabilidad PIT. DCC-GARCH gana los scores aun con una
-distribución más ancha. Ajustar correctamente la escala no equivale a ajustar la
-distribución completa ni su dependencia condicional.
+El cuadro es más matizado de lo que suele contarse. En CRPS **ninguna diferencia
+entre modelos resulta distinguible**, ni siquiera frente a DCC-GARCH. MM sí
+supera de forma significativa al Gaussiano y al histórico en dependencia entre
+activos, y pierde frente al control dinámico en Energy y Variogram.
 
-## Retroalimentación y próximos pasos
+En decisiones de portafolio, con los cinco generadores recalibrados en la misma
+cadencia que los baselines, **ninguna de diecisiete estrategias supera al Equal
+Weight** tras corregir por multiplicidad.
 
-El avance más importante no es que un modelo haya ganado, sino haber construido
-una comparación capaz de mostrar cuándo y por qué mi modelo pierde. El proyecto
-ya incorpora proper scoring rules, inferencia pareada con bootstrap temporal,
-Model Confidence Set, controles de look-ahead, linaje reproducible y 178 tests.
+El diagnóstico de calibración explica el mecanismo: MM-BCD queda más cerca de la
+dispersión ideal que cualquier otro modelo, pero no logra el mejor histograma
+PIT. Ajustar la escala no equivale a ajustar la distribución completa, y menos su
+dependencia condicional.
 
-Los siguientes pasos son:
+## Lo que cambió por el camino
 
-- igualar estrictamente el conjunto de información y la frecuencia de
-  recalibración de todos los modelos;
-- implementar portafolios MM completamente walk-forward antes de comparar
-  resultados de inversión;
-- evaluar benchmarks dinámicos adicionales, como cópulas, regímenes o
-  volatilidad estocástica;
-- reservar un holdout futuro realmente sellado para una evaluación
-  confirmatoria.
+Tres correcciones invalidaron conclusiones que yo mismo había publicado:
 
-El resultado actual es evidencia de desarrollo, no una recomendación de
-inversión. El código y el protocolo están disponibles aquí:
+Los grados de libertad de mi control Student-t estaban fijados a mano en 6,0.
+Estimarlos por verosimilitud dio un rango real de 12 a 25, y tumbó tres
+resultados anteriores.
+
+La solución de MM se publicaba eligiendo el mejor de varios arranques del solver.
+Como el objetivo no es convexo, esa elección se movía con diferencias numéricas
+irrelevantes, y esa variación resultó ser **del mismo orden que los efectos que
+estaba midiendo**. Ahora se publica la mezcla de los arranques válidos.
+
+Y observé que DCC-GARCH cambiaba de último a primero según el diseño de
+evaluación. Parecía indicar que el protocolo decidía el veredicto. Una ablación
+controlada sobre exactamente las mismas ventanas lo descartó: el ranking no se
+invierte, el cambio venía de que ambos diseños evalúan periodos distintos.
+
+## Hacia dónde va
+
+El periodo evaluado ya fue observado, de modo que nada de esto puede llamarse
+confirmatorio. Por eso el proyecto está ahora **congelado**: la especificación se
+selló el 26 de agosto, la evaluación confirmatoria empieza el 1 de septiembre y
+exige al menos cuarenta ventanas antes de admitir lectura alguna. Son unos diez
+meses de mercado.
+
+El sello se verifica por hash. Si la configuración, el protocolo o los cortes
+temporales cambian, `mm-ipsa verify` falla. Cualquiera puede prometer que no
+reajustará nada cuando lleguen los datos nuevos; el punto es que el código lo
+detecte.
+
+El proyecto tiene 225 pruebas automatizadas, verificación de tipos e integridad
+en cada etapa, y todo el código abierto.
+
+Mi modelo no ganó. Pero sé exactamente por qué, y eso sí es un resultado.
 
 https://github.com/tav0-m/mm-ipsa-research
 
 #DataScience #QuantitativeFinance #TimeSeries #Python #OpenScience
 
----
-
-## Orden de carga de las imágenes
-
-1. `docs/assets/linkedin-v07/01-comparacion-modelos.png`
-2. `docs/assets/linkedin-v07/02-estabilidad-temporal.png`
-3. `docs/assets/linkedin-v07/03-inferencia-mm-vs-dcc.png`
-4. `docs/assets/linkedin-v07/04-calibracion-distributiva.png`
-
-## Texto alternativo sugerido
-
-1. Tabla de cinco modelos y tres reglas de scoring; DCC-GARCH presenta la menor
-   pérdida en CRPS, Energy y Variogram sobre 169 ventanas fuera de muestra.
-2. Matriz de rangos CRPS por fold; DCC-GARCH gana 2023, 2025 y 2026 H1, mientras
-   Student-t gana 2024.
-3. Diferencias relativas MM-BCD menos DCC-GARCH con intervalos al 95%; los tres
-   intervalos quedan sobre cero después de la corrección de Holm.
-4. Dispersión frente a fiabilidad PIT; MM-BCD ajusta mejor la escala, mientras
-   DCC-GARCH obtiene un menor desvío del histograma PIT.
+Investigación independiente. No constituye asesoría de inversión.

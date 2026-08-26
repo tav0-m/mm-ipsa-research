@@ -118,10 +118,9 @@ class BCDSolver:
         available       = mp.cpu_count()
         self.n_workers  = min(n_workers if n_workers else available, self.n)
 
-        # Sigma historica para warm restart
-        self.sigma_hist = np.sqrt(np.abs(objective.M[1]))  # (n,)
+        # Escala del warm restart: desviacion tipica de los targets.
+        self.sigma_hist = np.sqrt(np.abs(objective.M[1]))
 
-        # Resultados
         self.best_x: np.ndarray | None = None
         self.best_p: np.ndarray | None = None
         self.best_F     = np.inf
@@ -132,7 +131,6 @@ class BCDSolver:
         self.all_starts = []
         self.solver_events = []
 
-    # -----------------------------------------------------------------------
     def _init_x(self, rng, warm=False):
         """
         Inicializa x.
@@ -154,7 +152,6 @@ class BCDSolver:
         raw = rng.exponential(1.0, self.N)
         return raw / raw.sum()
 
-    # -----------------------------------------------------------------------
     def _entropy(self, p: np.ndarray) -> float:
         """
         Entropia de Shannon H(p) = -sum_j p_j * log(p_j).
@@ -230,23 +227,18 @@ class BCDSolver:
                 g += lam * (np.log(p_safe * self.N) + 1.0)
             return g
 
-        # p0 interior para evitar log(0) en el primer gradiente
-        # FIX lb: 1e-12 → 1e-6 para evitar gradiente de entropia extremo.
-        # Con lam=0.001, el equilibrio natural es p* ~ 1/N = 1/500 = 0.002,
-        # muy por encima de 1e-6. El bound 1e-12 causaba que el gradiente de
-        # entropia en p_j=1e-12 fuera log(1e-12)+1 ≈ -26.6, forzando pasos
-        # muy grandes que salen de los bounds → RuntimeWarning de SciPy.
+        # Cota inferior holgada frente al equilibrio natural p ~ 1/N: con un piso
+        # de 1e-12 el gradiente entropico alcanza -26.6 y fuerza pasos que salen
+        # de los bounds. El punto inicial arranca dentro del interior por la
+        # misma razon.
         lb = 1e-6 if lam > 0.0 else 0.0
 
-        # p0: clip al bound lb más un margen para empezar en el interior
-        # Usamos max(lb, 1e-5) como piso del punto de inicio para que SLSQP
-        # no parta desde la frontera (reduce iteraciones internas).
         p0_floor = max(lb, 1e-5) if lam > 0.0 else 0.0
         p0 = np.maximum(p, p0_floor)
         p0 /= p0.sum()
 
-        # Suprimir el RuntimeWarning de SciPy sobre bounds clipping:
-        # es informacional (SLSQP recorta y continúa correctamente).
+        # El aviso de SciPy sobre recorte de bounds es informativo: SLSQP
+        # recorta y continua correctamente.
         with _warnings.catch_warnings():
             _warnings.filterwarnings(
                 "ignore", category=RuntimeWarning,
@@ -255,13 +247,13 @@ class BCDSolver:
             result = minimize(
                 objective_reg,
                 p0,
-                jac         = gradient_reg,
-                method      = "SLSQP",
-                bounds      = [(lb, 1.0)] * self.N,
-                constraints = [{"type": "eq", "fun": lambda p_: p_.sum() - 1.0}],
-                # FIX maxiter: 300→100 — con N=500 cada iter SLSQP es O(N²).
-                # La convergencia del BCD viene de los outer iters, no del sub-solver.
-                options     = {"ftol": 1e-8, "maxiter": 100}
+                jac=gradient_reg,
+                method="SLSQP",
+                bounds=[(lb, 1.0)] * self.N,
+                constraints=[{"type": "eq", "fun": lambda p_: p_.sum() - 1.0}],
+                # Cada iteracion SLSQP es O(N^2); la convergencia proviene de
+                # las iteraciones externas del BCD, no de este sub-solver.
+                options={"ftol": 1e-8, "maxiter": 100},
             )
         if not result.success:
             msg = f"SLSQP paso-p fallo: status={result.status}, mensaje={result.message}"
@@ -335,7 +327,6 @@ class BCDSolver:
             return self._step_p_slsqp(x, p)
         return self._step_p_mirror(x, p)
 
-    # -----------------------------------------------------------------------
     def _step_x_sequential(self, x, p):
         """BCD Gauss-Seidel: actualiza una columna y valida descenso de G."""
         obj   = self.obj
@@ -462,7 +453,6 @@ class BCDSolver:
                 return self._step_x_sequential(x, p)
         return self._step_x_sequential(x, p)
 
-    # -----------------------------------------------------------------------
     def _run_single_start(self, start_id, seed, use_warm=False):
         rng = np.random.default_rng(seed)
         x   = self._init_x(rng, warm=use_warm)
@@ -518,7 +508,6 @@ class BCDSolver:
                 "rel_history": rel_history, "stationarity": stationarity,
                 "stationarity_pass": stationarity_pass}
 
-    # -----------------------------------------------------------------------
     def solve(self, out_path=None) -> tuple[np.ndarray, np.ndarray]:
         """
         Ejecuta n_starts y devuelve la mejor solucion.
@@ -637,7 +626,6 @@ class BCDSolver:
         return best_x, best_p
 
 
-    # -----------------------------------------------------------------------
     def eligible_starts(self) -> list[dict]:
         """Starts que convergieron y superaron los umbrales de estacionariedad."""
         return [
@@ -708,7 +696,6 @@ class BCDSolver:
             "ensemble_g_spread": float(finals.max() - finals.min()) if len(finals) else float("nan"),
         }
 
-    # -----------------------------------------------------------------------
     def summary_table(self) -> pd.DataFrame:
         """
         Devuelve un DataFrame con el resumen de todos los starts del BCD.
@@ -748,7 +735,6 @@ class BCDSolver:
             })
         return pd.DataFrame(rows)
 
-    # -----------------------------------------------------------------------
     def _save_history(self, out_dir):
         """Guarda objective_history.csv para generate_all_plots.py."""
         histories = {f"start_{r['start_id']}": r["history"]

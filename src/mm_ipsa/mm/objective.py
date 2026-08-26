@@ -1,174 +1,175 @@
-"""Objetivo Matching-Moment vectorizado y sus gradientes analíticos.
+"""Objetivo Matching-Moment vectorizado y sus gradientes analiticos.
 
-Esta extensión ajusta momentos marginales y covarianzas mediante mínimos
-cuadrados. No es una implementación literal de Ponomareva, Roman y Date (2015)
-ni de la reformulación de Contreras, Bosch y Herrera (2018).
+Ajusta momentos marginales y covarianzas por minimos cuadrados ponderados. No es
+una implementacion literal de Ponomareva, Roman y Date (2015) ni de la
+reformulacion de Contreras, Bosch y Herrera (2018).
 """
 
 import numpy as np
 
+MOMENT_ORDERS = 4
+
 
 class MMObjective:
-    """
-    Función objetivo F(x,p) del Matching-Moment con gradientes vectorizados.
+    """Funcion objetivo ``F(x, p)`` con gradientes cerrados.
 
-    F(x, p) = Σ_{k=1}^{4} w_k · Σ_i (m̂_{k,i} − M_{k,i})²
-            + w_Σ · ‖Ĉ − Σ‖²_F
+    ``F`` suma los errores cuadraticos de los cuatro primeros momentos centrales
+    y un termino de dependencia sobre las covarianzas cruzadas::
+
+        F(x, p) = sum_k sum_i W[k, i] (momento[k, i] - objetivo[k, i])^2
+                + peso_dependencia * sum_{i != j} A[i, j] (C[i, j] - Sigma[i, j])^2
 
     Parameters
     ----------
-    M        : (4, n)  momentos centrales históricos
-    Sigma_tgt: (n, n)  covarianza histórica objetivo
-    weights  : dict    k1, k2, k3, k4, cov_weight
-    N        : int     número de escenarios
+    moment_targets : (4, n) momentos centrales historicos.
+    covariance_target : (n, n) covarianza historica objetivo.
+    weights : pesos por momento y opciones de escalado.
+    n_scenarios : tamano del soporte con que se calibra.
     """
 
-    def __init__(self, M: np.ndarray, Sigma_tgt: np.ndarray,
-                 weights: dict, N: int):
-        M = np.asarray(M, dtype=float)
-        Sigma_tgt = np.asarray(Sigma_tgt, dtype=float)
-        if M.ndim != 2 or M.shape[0] != 4:
-            raise ValueError("M debe tener shape (4, n)")
-        if Sigma_tgt.shape != (M.shape[1], M.shape[1]):
-            raise ValueError("Sigma_tgt debe tener shape (n, n)")
-        if not np.all(np.isfinite(M)) or not np.all(np.isfinite(Sigma_tgt)):
+    def __init__(
+        self,
+        moment_targets: np.ndarray,
+        covariance_target: np.ndarray,
+        weights: dict,
+        n_scenarios: int,
+    ):
+        moment_targets = np.asarray(moment_targets, dtype=float)
+        covariance_target = np.asarray(covariance_target, dtype=float)
+        if moment_targets.ndim != 2 or moment_targets.shape[0] != MOMENT_ORDERS:
+            raise ValueError(f"moment_targets debe tener shape ({MOMENT_ORDERS}, n)")
+        n_assets = moment_targets.shape[1]
+        if covariance_target.shape != (n_assets, n_assets):
+            raise ValueError("covariance_target debe tener shape (n, n)")
+        if not np.all(np.isfinite(moment_targets)) or not np.all(
+            np.isfinite(covariance_target)
+        ):
             raise ValueError("Los targets contienen NaN o infinitos")
-        if N <= 1:
-            raise ValueError("N debe ser mayor que 1")
+        if n_scenarios <= 1:
+            raise ValueError("n_scenarios debe ser mayor que 1")
 
-        self.M         = M.copy()
-        self.Sigma_tgt = Sigma_tgt.copy()
-        self.w         = np.array([weights["k1"], weights["k2"],
-                                   weights["k3"], weights["k4"]])
-        self.w_cov     = float(weights.get("cov_weight", 1.0))
-        self.cov_normalize = bool(weights.get("cov_normalize", True))
-        self.cov_scale_floor = float(weights.get("cov_scale_floor", 1e-3))
-        self.cov_offdiag_only = bool(weights.get("cov_offdiag_only", True))
-        self.moment_scale_mode = str(
-            weights.get("moment_scale_mode", "volatility_power")
+        self.M = moment_targets.copy()
+        self.Sigma_tgt = covariance_target.copy()
+        self.N = n_scenarios
+        self.n = n_assets
+
+        self.moment_weights = np.array(
+            [weights["k1"], weights["k2"], weights["k3"], weights["k4"]]
         )
-        self.moment_scale_floor = float(weights.get("moment_scale_floor", 1e-6))
-        self.N         = N
-        self.n         = M.shape[1]
+        self.dependence_weight = float(weights.get("cov_weight", 1.0))
+        self.CW = self._covariance_scaling(weights)
+        self.moment_scales = self._moment_scales(weights)
+        self.W = self.moment_weights[:, None] / self.moment_scales**2
 
-        # Scale covariance errors by target volatilities. Without this,
-        # covariance entries are O(1e-4) and the Frobenius term can become
-        # numerically irrelevant versus normalized marginal moments.
-        std_tgt = np.sqrt(np.maximum(np.diag(self.Sigma_tgt), 1e-12))
-        cov_scale = np.outer(std_tgt, std_tgt)
-        self.CW = 1.0 / np.maximum(cov_scale, self.cov_scale_floor) ** 2
-        if not self.cov_normalize:
-            self.CW = np.ones_like(self.Sigma_tgt)
+    def _covariance_scaling(self, weights: dict) -> np.ndarray:
+        """Pesos del termino de dependencia, normalizados por volatilidad.
 
-        # La varianza ya se calibra mediante M[1]. Se excluye la diagonal del
-        # termino de dependencia para no contarla dos veces. Cada par simetrico
-        # off-diagonal recibe 0.5 para que contribuya una sola vez.
-        if self.cov_offdiag_only:
-            np.fill_diagonal(self.CW, 0.0)
-        offdiag = ~np.eye(self.n, dtype=bool)
-        self.CW[offdiag] *= 0.5
+        Sin normalizar, las covarianzas son de orden 1e-4 y el termino de
+        Frobenius se vuelve numericamente irrelevante frente a los momentos
+        marginales, que si estan normalizados. La diagonal se excluye porque la
+        varianza ya se calibra en el segundo momento, y cada par simetrico
+        recibe medio peso para contribuir una sola vez.
+        """
+        floor = float(weights.get("cov_scale_floor", 1e-3))
+        if bool(weights.get("cov_normalize", True)):
+            deviations = np.sqrt(np.maximum(np.diag(self.Sigma_tgt), 1e-12))
+            scale = np.outer(deviations, deviations)
+            scaling = 1.0 / np.maximum(scale, floor) ** 2
+        else:
+            scaling = np.ones_like(self.Sigma_tgt)
 
-        # Escalas estables por potencia de volatilidad. Evitan que una media o
-        # un tercer momento cercanos a cero produzcan pesos explosivos.
-        if self.moment_scale_mode == "volatility_power":
-            variance = np.maximum(self.M[1], self.moment_scale_floor**2)
-            sigma = np.sqrt(variance)
-            scales = np.vstack([sigma, variance, sigma**3, variance**2])
-        elif self.moment_scale_mode == "target_magnitude":
-            scales = np.maximum(np.abs(self.M), self.moment_scale_floor)
+        if bool(weights.get("cov_offdiag_only", True)):
+            np.fill_diagonal(scaling, 0.0)
+        scaling[~np.eye(self.n, dtype=bool)] *= 0.5
+        return scaling
+
+    def _moment_scales(self, weights: dict) -> np.ndarray:
+        """Escalas por momento, con piso para evitar pesos explosivos.
+
+        El modo por potencia de volatilidad impide que una media o un tercer
+        momento cercanos a cero dominen el objetivo.
+        """
+        mode = str(weights.get("moment_scale_mode", "volatility_power"))
+        floor = float(weights.get("moment_scale_floor", 1e-6))
+        if mode == "volatility_power":
+            variance = np.maximum(self.M[1], floor**2)
+            deviation = np.sqrt(variance)
+            scales = np.vstack([deviation, variance, deviation**3, variance**2])
+        elif mode == "target_magnitude":
+            scales = np.maximum(np.abs(self.M), floor)
         else:
             raise ValueError(
-                "moment_scale_mode debe ser 'volatility_power' o "
-                "'target_magnitude'"
+                "moment_scale_mode debe ser 'volatility_power' o 'target_magnitude'"
             )
-        self.moment_scales = np.maximum(scales, self.moment_scale_floor)
-        self.W = self.w[:, None] / self.moment_scales**2
+        return np.maximum(scales, floor)
 
-    # ──────────────────────────────────────────────────────────────────────
-    def compute_moments(self, x: np.ndarray,
-                        p: np.ndarray) -> tuple:
-        """
-        Calcula los 4 momentos centrales y la covarianza.
+    def compute_moments(self, x: np.ndarray, p: np.ndarray) -> tuple:
+        """Cuatro momentos centrales ponderados, media y covarianza."""
+        moments, mean, covariance, _ = self._moments_with_deviations(x, p)
+        return moments, mean, covariance
 
-        Parameters
-        ----------
-        x : (N, n)  posiciones de escenarios
-        p : (N,)    probabilidades  (suma = 1, p ≥ 0)
-
-        Returns
-        -------
-        m  : (4, n)  momentos centrales
-        mu : (n,)    media ponderada
-        C  : (n, n)  covarianza ponderada
-        """
-        m, mu, C, _ = self._moments_with_deviations(x, p)
-        return m, mu, C
-
-    # ──────────────────────────────────────────────────────────────────────
     def _moments_with_deviations(
         self, x: np.ndarray, p: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Momentos, media, covarianza y las desviaciones ya calculadas.
 
-        Las potencias se obtienen multiplicando en cadena en vez de elevar con
-        ``**``: ``np.power`` es un orden de magnitud mas lento que un producto
-        elemento a elemento, y esta rutina se evalua miles de veces por cada
-        busqueda por retroceso del paso-p. La diferencia es solo de reasociacion
-        en punto flotante.
+        Las potencias se encadenan por multiplicacion en vez de usar ``**``:
+        ``np.power`` es un orden de magnitud mas lento, y esta rutina se evalua
+        miles de veces por cada busqueda por retroceso del paso-p. La diferencia
+        es solo de reasociacion en punto flotante.
 
-        Devolver ``dev`` evita que los gradientes lo reconstruyan.
+        Devolver las desviaciones evita que los gradientes las reconstruyan.
         """
-        mu  = p @ x                          # (n,)
-        dev = x - mu[np.newaxis, :]          # (N, n)
-        squared = dev * dev
-        cubed = squared * dev
+        mean = p @ x
+        deviations = x - mean[np.newaxis, :]
+        squared = deviations * deviations
+        cubed = squared * deviations
 
-        m    = np.empty((4, self.n))
-        m[0] = mu
-        m[1] = p @ squared
-        m[2] = p @ cubed
-        m[3] = p @ (squared * squared)
+        moments = np.empty((MOMENT_ORDERS, self.n))
+        moments[0] = mean
+        moments[1] = p @ squared
+        moments[2] = p @ cubed
+        moments[3] = p @ (squared * squared)
 
-        # C_{il} = Σ_j p_j · dev_{ji} · dev_{jl}
-        C = (p[:, None] * dev).T @ dev      # (n, n)
+        covariance = (p[:, None] * deviations).T @ deviations
+        return moments, mean, covariance, deviations
 
-        return m, mu, C, dev
-
-    # ──────────────────────────────────────────────────────────────────────
     def evaluate(self, x: np.ndarray, p: np.ndarray) -> float:
-        """Evalúa F(x, p)."""
+        """Valor de ``F(x, p)``."""
         self._validate_state(x, p)
-        m, mu, C = self.compute_moments(x, p)
-        diff_m = m - self.M
-        diff_C = C - self.Sigma_tgt
-        return float(np.sum(self.W * diff_m ** 2) +
-                     self.w_cov * np.sum(self.CW * diff_C ** 2))
+        moments, _, covariance = self.compute_moments(x, p)
+        moment_error = moments - self.M
+        dependence_error = covariance - self.Sigma_tgt
+        return float(
+            np.sum(self.W * moment_error**2)
+            + self.dependence_weight * np.sum(self.CW * dependence_error**2)
+        )
 
     def components(self, x: np.ndarray, p: np.ndarray) -> dict:
-        """Descompone F para auditoría y comparación entre corridas."""
+        """Descompone ``F`` por termino, para auditoria entre corridas."""
         self._validate_state(x, p)
-        m, _, C = self.compute_moments(x, p)
-        diff_m = m - self.M
-        diff_C = C - self.Sigma_tgt
-        moment_terms = np.sum(self.W * diff_m**2, axis=1)
-        dependence = self.w_cov * float(np.sum(self.CW * diff_C**2))
+        moments, _, covariance = self.compute_moments(x, p)
+        moment_error = moments - self.M
+        dependence_error = covariance - self.Sigma_tgt
+        by_moment = np.sum(self.W * moment_error**2, axis=1)
+        dependence = self.dependence_weight * float(
+            np.sum(self.CW * dependence_error**2)
+        )
         return {
-            "mean": float(moment_terms[0]),
-            "variance": float(moment_terms[1]),
-            "third_central": float(moment_terms[2]),
-            "fourth_central": float(moment_terms[3]),
+            "mean": float(by_moment[0]),
+            "variance": float(by_moment[1]),
+            "third_central": float(by_moment[2]),
+            "fourth_central": float(by_moment[3]),
             "dependence": dependence,
-            "total": float(moment_terms.sum() + dependence),
+            "total": float(by_moment.sum() + dependence),
         }
 
     def _validate_state(self, x: np.ndarray, p: np.ndarray) -> None:
         x = np.asarray(x)
         p = np.asarray(p)
-        # El objetivo esta definido para cualquier tamano de soporte: N se guarda
-        # como el tamano de calibracion, pero la matematica no lo usa. Exigirlo
-        # impediria evaluar una solucion de ensemble, cuyo soporte es un multiplo
-        # de N. Lo que si debe cumplirse es la consistencia entre x y p y el
-        # numero de activos.
+        # N se guarda como el tamano de calibracion, pero la matematica no lo
+        # usa: exigirlo impediria evaluar una solucion de ensemble, cuyo soporte
+        # es un multiplo de N.
         if x.ndim != 2 or x.shape[1] != self.n:
             raise ValueError(f"x debe tener {self.n} columnas; recibido {x.shape}")
         if p.ndim != 1 or p.shape[0] != x.shape[0]:
@@ -178,113 +179,70 @@ class MMObjective:
         if np.min(p) < -1e-10:
             raise ValueError("p contiene probabilidades negativas")
         # Los solvers con restricciones evaluan puntos intermedios apenas fuera
-        # del hiperplano. La salida final se valida con tolerancia mas estricta.
+        # del hiperplano; la salida final se valida con tolerancia mas estricta.
         if abs(float(p.sum()) - 1.0) > 1e-4:
             raise ValueError("p debe sumar aproximadamente 1 durante la optimizacion")
 
-    # ──────────────────────────────────────────────────────────────────────
     def grad_x(self, x: np.ndarray, p: np.ndarray) -> np.ndarray:
+        """Gradiente respecto de las posiciones, con shape ``(N, n)``.
+
+        Derivacion analitica del objetivo definido en este modulo::
+
+            dF/dx[s, r] = p[s] * (
+                2 W[0, r] e[0, r]
+              + 4 W[1, r] e[1, r] dev[s, r]
+              + 6 W[2, r] e[2, r] (dev[s, r]^2 - m[1, r])
+              + 8 W[3, r] e[3, r] (dev[s, r]^3 - m[2, r])
+              + 4 w_dep sum_l A[r, l] dC[r, l] dev[s, l]
+            )
         """
-        Gradiente ∂F/∂x  —  shape (N, n).
+        moments, _, covariance, deviations = self._moments_with_deviations(x, p)
+        squared = deviations * deviations
+        moment_error = moments - self.M
+        dependence_error = self.CW * (covariance - self.Sigma_tgt)
+        probability = p[:, None]
 
-        Derivacion analitica de la funcion definida en este modulo,
-        completamente vectorizada sin bucles Python.
+        gradient = 2 * self.W[0] * moment_error[0] * probability
+        gradient += 4 * self.W[1] * moment_error[1] * probability * deviations
+        gradient += (
+            6 * self.W[2] * moment_error[2] * probability * (squared - moments[1])
+        )
+        gradient += (
+            8
+            * self.W[3]
+            * moment_error[3]
+            * probability
+            * (squared * deviations - moments[2])
+        )
+        # El Frobenius simetrico aporta dos terminos equivalentes, de ahi el 4.
+        gradient += (
+            4 * self.dependence_weight * probability * deviations @ dependence_error.T
+        )
+        return gradient
 
-        ∂F/∂x_{sr} = p_s · [
-            2 W₁ᵣ δm₁ᵣ
-          + 4 W₂ᵣ δm₂ᵣ · devₛᵣ
-          + 6 W₃ᵣ δm₃ᵣ · (devₛᵣ² − m₂ᵣ)
-          + 8 W₄ᵣ δm₄ᵣ · (devₛᵣ³ − m₃ᵣ)
-          + 4 wΣ · Σₗ δCᵣₗ · devₛₗ
-        ]
-        """
-        m, _, C, dev = self._moments_with_deviations(x, p)
-        squared = dev * dev
-        diff_m = m - self.M                  # (4, n)
-        diff_C = C - self.Sigma_tgt          # (n, n)
-        diff_C_w = self.CW * diff_C          # scaled covariance residuals
-        ps     = p[:, None]                  # (N, 1)  para broadcasting
-
-        # ── Términos de momentos ─────────────────────────────────────────
-        g  = 2 * self.W[0] * diff_m[0] * ps                          # m1
-        g += 4 * self.W[1] * diff_m[1] * ps * dev                    # m2
-        g += 6 * self.W[2] * diff_m[2] * ps * (squared - m[1])       # m3
-        g += 8 * self.W[3] * diff_m[3] * ps * (squared * dev - m[2]) # m4
-
-        # ── Término de covarianza ────────────────────────────────────────
-        # El Frobenius simetrico aporta dos terminos equivalentes.
-        g += 4 * self.w_cov * ps * dev @ diff_C_w.T                 # cov
-
-        return g                                                      # (N, n)
-
-    # ──────────────────────────────────────────────────────────────────────
     def grad_p(self, x: np.ndarray, p: np.ndarray) -> np.ndarray:
+        """Gradiente respecto de las probabilidades, con shape ``(N,)``::
+
+            dF/dp[s] = sum_i (
+                2 W[0, i] e[0, i] x[s, i]
+              + 2 W[1, i] e[1, i] dev[s, i]^2
+              + 2 W[2, i] e[2, i] (dev[s, i]^3 - 3 x[s, i] m[1, i])
+              + 2 W[3, i] e[3, i] (dev[s, i]^4 - 4 x[s, i] m[2, i])
+            ) + 2 w_dep sum_ij A[i, j] dC[i, j] dev[s, i] dev[s, j]
         """
-        Gradiente ∂F/∂p  —  shape (N,).
+        moments, _, covariance, deviations = self._moments_with_deviations(x, p)
+        squared = deviations * deviations
+        cubed = squared * deviations
+        moment_error = moments - self.M
+        dependence_error = self.CW * (covariance - self.Sigma_tgt)
 
-        ∂F/∂p_s = Σᵢ [
-            2 W₁ᵢ δm₁ᵢ · xₛᵢ
-          + 2 W₂ᵢ δm₂ᵢ · devₛᵢ²
-          + 2 W₃ᵢ δm₃ᵢ · (devₛᵢ³ − 3 xₛᵢ m₂ᵢ)
-          + 2 W₄ᵢ δm₄ᵢ · (devₛᵢ⁴ − 4 xₛᵢ m₃ᵢ)
-        ] + 2wΣ · Σᵢⱼ δCᵢⱼ · devₛᵢ · devₛⱼ
-        """
-        m, _, C, dev = self._moments_with_deviations(x, p)
-        squared = dev * dev
-        cubed = squared * dev
-        diff_m = m - self.M                   # (4, n)
-        diff_C = C - self.Sigma_tgt           # (n, n)
-        diff_C_w = self.CW * diff_C           # scaled covariance residuals
-
-        # ── Términos de momentos  [(N,n) @ (n,)] → (N,) ─────────────────
-        g  = 2 * x       @ (self.W[0] * diff_m[0])                    # m1
-        g += 2 * squared @ (self.W[1] * diff_m[1])                    # m2
-        g += 2 * (cubed - 3*x*m[1])           @ (self.W[2] * diff_m[2])  # m3
-        g += 2 * (squared*squared - 4*x*m[2]) @ (self.W[3] * diff_m[3])  # m4
-
-        # ── Término de covarianza: einsum 'si,ij,sj->s' ──────────────────
-        # diag( dev · diff_C · devᵀ )
-        g += 2 * self.w_cov * np.einsum("si,ij,sj->s", dev, diff_C_w, dev)
-
-        return g                                                       # (N,)
-
-    # ──────────────────────────────────────────────────────────────────────
-    def compute_errors(self, x: np.ndarray, p: np.ndarray) -> dict:
-        """
-        Diagnóstico post-calibración: MAE, RMSE y error relativo
-        por momento, más error de correlación.
-        """
-        m, mu, C = self.compute_moments(x, p)
-        n = self.n
-
-        errors = {}
-        moment_names = ["media", "varianza", "asimetria", "kurtosis"]
-
-        for k, name in enumerate(moment_names):
-            diff = np.abs(m[k] - self.M[k])
-            mae  = diff.mean()
-            denom= np.abs(self.M[k]).mean()
-            errors[name] = {
-                "MAE"       : mae,
-                "RMSE"      : float(np.sqrt((diff**2).mean())),
-                "rel_error" : mae / (denom + 1e-12),
-                "by_asset"  : diff,
-                "hist_vals" : self.M[k].copy(),
-                "mm_vals"   : m[k].copy(),
-            }
-
-        # Error de correlación off-diagonal
-        std_h  = np.sqrt(np.maximum(np.diag(self.Sigma_tgt), 0))
-        std_m  = np.sqrt(np.maximum(np.diag(C), 0))
-        err_c  = []
-        for i in range(n):
-            for j in range(i+1, n):
-                rho_h = self.Sigma_tgt[i,j] / (std_h[i]*std_h[j] + 1e-10)
-                rho_m = C[i,j]              / (std_m[i]*std_m[j] + 1e-10)
-                err_c.append(abs(rho_m - rho_h))
-
-        errors["correlacion"] = {
-            "MAE" : float(np.mean(err_c)),
-            "MAX" : float(np.max(err_c)),
-        }
-        return errors
+        gradient = 2 * x @ (self.W[0] * moment_error[0])
+        gradient += 2 * squared @ (self.W[1] * moment_error[1])
+        gradient += 2 * (cubed - 3 * x * moments[1]) @ (self.W[2] * moment_error[2])
+        gradient += 2 * (squared * squared - 4 * x * moments[2]) @ (
+            self.W[3] * moment_error[3]
+        )
+        gradient += 2 * self.dependence_weight * np.einsum(
+            "si,ij,sj->s", deviations, dependence_error, deviations
+        )
+        return gradient

@@ -12,20 +12,19 @@ from scipy import stats
 
 # Estilo consistente con el informe de investigacion.
 plt.rcParams.update({
-    "font.family"       : "serif",
-    "font.size"         : 9,
-    "axes.titlesize"    : 10,
-    "figure.dpi"        : 150,
-    "axes.grid"         : True,
-    "grid.alpha"        : 0.25,
-    "axes.spines.top"   : False,
-    "axes.spines.right" : False,
+    "font.family": "serif",
+    "font.size": 9,
+    "axes.titlesize": 10,
+    "figure.dpi": 150,
+    "axes.grid": True,
+    "grid.alpha": 0.25,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
 })
 COL_HIST = "#2E5FA3"
-COL_MM   = "#E8622A"
+COL_MM = "#E8622A"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 class MMDiagnostics:
     """Tablas y figuras que contrastan la solucion MM con sus momentos objetivo.
 
@@ -34,90 +33,82 @@ class MMDiagnostics:
     """
 
     def __init__(self, x, p, M, Sigma_tgt, labels, cfg):
-        self.x      = x          # (N, n)
-        self.p      = p          # (N,)
-        self.M      = M          # (4, n) momentos objetivo
-        self.Sigma  = Sigma_tgt  # (n, n) covarianza objetivo
+        self.x = x
+        self.p = p
+        self.M = M
+        self.Sigma = Sigma_tgt
         self.labels = labels
         self.N, self.n = x.shape
-        
-        fig_dir = Path(cfg["paths"]["figures"])
-        tab_dir = Path(cfg["paths"]["tables"])
-        fig_dir.mkdir(parents=True, exist_ok=True)
-        tab_dir.mkdir(parents=True, exist_ok=True)
-        self.fig_dir = fig_dir
-        self.tab_dir = tab_dir
-        
-        # Momentos MM
-        mu       = p @ x
-        dev      = x - mu[np.newaxis,:]
-        self.mu_mm = mu
-        self.m_mm  = np.zeros((4, self.n))
-        self.m_mm[0] = mu
-        for k in range(1,4):
-            self.m_mm[k] = p @ (dev**(k+1))
-        
-        std = np.sqrt(np.maximum(np.diag(Sigma_tgt),0))
-        self.corr_hist = Sigma_tgt / (std[:,None]*std[None,:] + 1e-10)
-        
-        C_mm = (p[:,None,None] * dev[:,:,None] * dev[:,None,:]).sum(0)
-        std_mm = np.sqrt(np.maximum(np.diag(C_mm),0))
-        self.corr_mm = C_mm / (std_mm[:,None]*std_mm[None,:] + 1e-10)
 
-    # ───────────────────────────────────────────────────────────────────────
+        self.fig_dir = Path(cfg["paths"]["figures"])
+        self.tab_dir = Path(cfg["paths"]["tables"])
+        self.fig_dir.mkdir(parents=True, exist_ok=True)
+        self.tab_dir.mkdir(parents=True, exist_ok=True)
+
+        mean = p @ x
+        deviations = x - mean[np.newaxis, :]
+        self.mu_mm = mean
+        self.m_mm = np.zeros((4, self.n))
+        self.m_mm[0] = mean
+        for order in range(1, 4):
+            self.m_mm[order] = p @ (deviations ** (order + 1))
+
+        target_deviation = np.sqrt(np.maximum(np.diag(Sigma_tgt), 0))
+        self.corr_hist = Sigma_tgt / (
+            target_deviation[:, None] * target_deviation[None, :] + 1e-10
+        )
+
+        fitted_covariance = (
+            p[:, None, None] * deviations[:, :, None] * deviations[:, None, :]
+        ).sum(0)
+        fitted_deviation = np.sqrt(np.maximum(np.diag(fitted_covariance), 0))
+        self.corr_mm = fitted_covariance / (
+            fitted_deviation[:, None] * fitted_deviation[None, :] + 1e-10
+        )
+
     def table_moments(self) -> pd.DataFrame:
         """Tabla de momentos histórico vs MM con errores."""
         rows = []
-        for i, label in enumerate(self.labels):
-            mh = self.M[:, i]
-            mm = self.m_mm[:, i]
-            
-            # Se reporta exceso de curtosis (Pearson menos 3) para que el cero
-            # sea la referencia gaussiana. Con la convencion de Pearson, un
-            # valor de 3 se lee como cola pesada cuando en realidad es normal.
-            kurt_h = mh[3]/(mh[1]**2+1e-10) - 3.0
-            kurt_m = mm[3]/(mm[1]**2+1e-10) - 3.0
-            skew_h = mh[2]/(mh[1]**1.5+1e-10)
-            skew_m = mm[2]/(mm[1]**1.5+1e-10)
+        for index, label in enumerate(self.labels):
+            historical = self.M[:, index]
+            fitted = self.m_mm[:, index]
 
+            # Exceso de curtosis (Pearson menos 3): asi el cero es la referencia
+            # gaussiana y un valor de 3 no se lee como cola pesada.
             rows.append({
-                "Activo"           : label,
-                "mu_hist_%"        : mh[0]*100,
-                "mu_mm_%"          : mm[0]*100,
-                "sig_hist_%"       : np.sqrt(mh[1])*100,
-                "sig_mm_%"         : np.sqrt(mm[1])*100,
-                "skew_hist"        : skew_h,
-                "skew_mm"          : skew_m,
-                "excess_kurt_hist" : kurt_h,
-                "excess_kurt_mm"   : kurt_m,
+                "Activo": label,
+                "mu_hist_%": historical[0] * 100,
+                "mu_mm_%": fitted[0] * 100,
+                "sig_hist_%": np.sqrt(historical[1]) * 100,
+                "sig_mm_%": np.sqrt(fitted[1]) * 100,
+                "skew_hist": historical[2] / (historical[1] ** 1.5 + 1e-10),
+                "skew_mm": fitted[2] / (fitted[1] ** 1.5 + 1e-10),
+                "excess_kurt_hist": historical[3] / (historical[1] ** 2 + 1e-10) - 3.0,
+                "excess_kurt_mm": fitted[3] / (fitted[1] ** 2 + 1e-10) - 3.0,
             })
-        df = pd.DataFrame(rows)
-        df.to_csv(self.tab_dir / "moments_comparison.csv", index=False)
-        return df
+        table = pd.DataFrame(rows)
+        table.to_csv(self.tab_dir / "moments_comparison.csv", index=False)
+        return table
 
-    # ───────────────────────────────────────────────────────────────────────
     def table_mae(self) -> pd.DataFrame:
         """Tabla MAE, RMSE y error relativo por momento."""
         moment_names = ["Media (m1)", "Varianza (m2)",
                         "Asimetría (m3)", "Kurtosis (m4)"]
         rows = []
         for k, name in enumerate(moment_names):
-            diff = np.abs(self.m_mm[k] - self.M[k])
-            mae  = diff.mean()
-            rmse = np.sqrt((diff**2).mean())
-            denom= np.abs(self.M[k]).mean()
-            rel  = mae / (denom + 1e-12)
+            absolute_error = np.abs(self.m_mm[k] - self.M[k])
+            mae = absolute_error.mean()
+            reference = np.abs(self.M[k]).mean()
             rows.append({
-                "Momento"      : name,
-                "MAE"          : mae,
-                "RMSE"         : rmse,
-                "Err_relativo" : rel*100,
+                "Momento": name,
+                "MAE": mae,
+                "RMSE": np.sqrt((absolute_error**2).mean()),
+                "Err_relativo": mae / (reference + 1e-12) * 100,
             })
-        df = pd.DataFrame(rows)
-        df.to_csv(self.tab_dir / "mae_moments.csv", index=False)
-        return df
+        table = pd.DataFrame(rows)
+        table.to_csv(self.tab_dir / "mae_moments.csv", index=False)
+        return table
 
-    # ───────────────────────────────────────────────────────────────────────
     def table_probs(self) -> pd.DataFrame:
         """Estadísticas de la distribución de probabilidades."""
         p = self.p
@@ -140,11 +131,10 @@ class MMDiagnostics:
             {"Estadístico": "Peso top-10 escenarios (%)",       "Valor": round(np.sort(p)[::-1][:10].sum()*100,1)},
             {"Estadístico": "Peso top-20 escenarios (%)",       "Valor": round(np.sort(p)[::-1][:20].sum()*100,1)},
         ]
-        df = pd.DataFrame(rows)
-        df.to_csv(self.tab_dir / "scenario_probs.csv", index=False)
-        return df
+        table = pd.DataFrame(rows)
+        table.to_csv(self.tab_dir / "scenario_probs.csv", index=False)
+        return table
 
-    # ───────────────────────────────────────────────────────────────────────
     def plot_convergence(self, history: list, all_starts: list) -> None:
         """Figura de convergencia BCD — start ganador."""
         fig, ax = plt.subplots(figsize=(10, 5))
@@ -170,7 +160,6 @@ class MMDiagnostics:
         if len(all_starts) > 1:
             self.plot_multistart_convergence(all_starts)
 
-    # ───────────────────────────────────────────────────────────────────────
     def plot_multistart_convergence(self, all_starts: list) -> None:
         """Dashboard visual para justificar el start ganador."""
         rows = []
@@ -266,7 +255,6 @@ class MMDiagnostics:
         plt.close(fig)
         print("  [ok] convergence_bcd_multistart.png")
 
-    # ───────────────────────────────────────────────────────────────────────
     def plot_scenario_probs(self) -> None:
         """Figura de distribución de probabilidades y curva de Lorenz."""
         p = self.p
@@ -314,54 +302,66 @@ class MMDiagnostics:
         plt.close()
         print("  [ok] scenario_probabilities.png")
 
-    # ───────────────────────────────────────────────────────────────────────
     def plot_moments_panel(self, terminal: pd.DataFrame) -> None:
         """Panel de momentos histórico vs MM."""
-        X_hist = terminal[self.labels].to_numpy(dtype=float)
+        observed = terminal[self.labels].to_numpy(dtype=float)
         labels = self.labels
-        n      = self.n
-        x_pos  = np.arange(n)
-        w      = 0.38
-        
+        n = self.n
+        positions = np.arange(n)
+        bar_width = 0.38
+
         fig, axes = plt.subplots(4, 1, figsize=(14, 13))
         fig.suptitle("Matching de Momentos — IPSA H=5 días (2020-2025)",
                      fontsize=12, fontweight="bold")
-        
-        # Momentos históricos en escala interpretable
-        mu_h  = X_hist.mean(0)*100
-        sig_h = X_hist.std(0)*100
-        sk_h  = np.array([(((x:=X_hist[:,i])-x.mean())**3).mean()/
-                           (x.std()**3+1e-10) for i in range(n)])
-        # Exceso de curtosis: cero equivale a colas gaussianas.
-        ku_h  = np.array([(((x:=X_hist[:,i])-x.mean())**4).mean()/
-                           (x.std()**4+1e-10) for i in range(n)]) - 3.0
 
-        mu_m  = self.mu_mm*100
-        sig_m = np.sqrt(np.maximum(self.m_mm[1],0))*100
-        sk_m  = self.m_mm[2]/(self.m_mm[1]**1.5+1e-10)
-        ku_m  = self.m_mm[3]/(self.m_mm[1]**2+1e-10) - 3.0
-        
+        # Escala interpretable: media y volatilidad en porcentaje, y exceso de
+        # curtosis para que el cero corresponda a colas gaussianas.
+        hist_mean = observed.mean(0) * 100
+        hist_deviation = observed.std(0) * 100
+        hist_skewness = np.array([
+            (((column := observed[:, i]) - column.mean()) ** 3).mean()
+            / (column.std() ** 3 + 1e-10)
+            for i in range(n)
+        ])
+        hist_excess_kurtosis = np.array([
+            (((column := observed[:, i]) - column.mean()) ** 4).mean()
+            / (column.std() ** 4 + 1e-10)
+            for i in range(n)
+        ]) - 3.0
+
+        fitted_mean = self.mu_mm * 100
+        fitted_deviation = np.sqrt(np.maximum(self.m_mm[1], 0)) * 100
+        fitted_skewness = self.m_mm[2] / (self.m_mm[1] ** 1.5 + 1e-10)
+        fitted_excess_kurtosis = self.m_mm[3] / (self.m_mm[1] ** 2 + 1e-10) - 3.0
+
         panels = [
-            (axes[0], mu_h,  mu_m,  "Retorno esperado H=5 — MM replica con error < 0.01%", "Media (×100)"),
-            (axes[1], sig_h, sig_m, "Desviación estándar — ajuste casi perfecto en todos los activos","Volatilidad (%)"),
-            (axes[2], sk_h,  sk_m,  "Asimetría — MM captura el signo y magnitud con alta precisión", "Skewness"),
-            (axes[3], ku_h,  ku_m,  "Colas pesadas — exceso de curtosis (0 = gaussiana)","Exceso de curtosis"),
+            (axes[0], hist_mean, fitted_mean,
+             "Retorno esperado H=5 — MM replica con error < 0.01%", "Media (×100)"),
+            (axes[1], hist_deviation, fitted_deviation,
+             "Desviación estándar — ajuste casi perfecto en todos los activos",
+             "Volatilidad (%)"),
+            (axes[2], hist_skewness, fitted_skewness,
+             "Asimetría — MM captura el signo y magnitud con alta precisión",
+             "Skewness"),
+            (axes[3], hist_excess_kurtosis, fitted_excess_kurtosis,
+             "Colas pesadas — exceso de curtosis (0 = gaussiana)",
+             "Exceso de curtosis"),
         ]
-        
+
         for ax, vals_h, vals_m, subtitle, ylabel in panels:
-            ax.bar(x_pos-w/2, vals_h, w, label="Histórico",
+            ax.bar(positions - bar_width / 2, vals_h, bar_width, label="Histórico",
                    color=COL_HIST, alpha=0.85, edgecolor="white")
-            ax.bar(x_pos+w/2, vals_m, w, label="MM",
+            ax.bar(positions + bar_width / 2, vals_m, bar_width, label="MM",
                    color=COL_MM, alpha=0.85, edgecolor="white")
             
             # Porcentajes de error
             for i in range(n):
                 err = abs(vals_h[i]-vals_m[i])/(abs(vals_h[i])+1e-6)*100
                 col = "#27AE60" if err < 5 else "#E74C3C"
-                ax.text(x_pos[i]+w/2, vals_m[i]+abs(vals_m.max()-vals_m.min())*0.02,
+                ax.text(positions[i] + bar_width / 2, vals_m[i]+abs(vals_m.max()-vals_m.min())*0.02,
                         f"{err:.0f}%", ha="center", fontsize=6, color=col)
             
-            ax.set_xticks(x_pos)
+            ax.set_xticks(positions)
             ax.set_xticklabels(labels, rotation=35, ha="right", fontsize=8)
             ax.set_ylabel(ylabel, fontsize=9)
             ax.set_title(subtitle, fontsize=8.5, style="italic", color="#444")
@@ -373,7 +373,6 @@ class MMDiagnostics:
         plt.close()
         print("  [ok] moments_panel.png")
 
-    # ───────────────────────────────────────────────────────────────────────
     def plot_hist_grid(self, terminal: pd.DataFrame) -> None:
         """Grid de distribuciones terminales histórico vs MM simulado."""
         X_hist = terminal[self.labels].to_numpy(dtype=float)
@@ -436,7 +435,6 @@ class MMDiagnostics:
         plt.close()
         print("  [ok] hist_grid_H5.png")
 
-    # ───────────────────────────────────────────────────────────────────────
     def plot_corr_matrices(self) -> None:
         """Matrices de correlación histórica vs MM."""
         fig, axes = plt.subplots(1, 3, figsize=(18, 6))
@@ -478,7 +476,6 @@ class MMDiagnostics:
         plt.close()
         print("  [ok] corr_comparison.png")
 
-    # ───────────────────────────────────────────────────────────────────────
     def run_all(self, history: list, all_starts: list,
                 terminal: pd.DataFrame) -> None:
         """Ejecuta todos los diagnósticos."""
