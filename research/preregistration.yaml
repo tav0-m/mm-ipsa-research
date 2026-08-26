@@ -1,0 +1,47 @@
+preregistration_id: confirmatory_v1
+frozen_at: '2026-08-26'
+frozen_version: 0.10.0
+confirmatory_start: '2026-09-01'
+minimum_evaluation_windows: 40
+primary_contrast:
+  metric: mean_crps
+  focal_model: MM
+  benchmark_model: dcc_garch
+  alternative: two_sided
+decision_rule:
+  evidence_requires: pvalue_holm < 0.05 y el IC95 excluye cero
+  multiple_testing: holm sobre todos los contrastes declarados
+  block_length: politis_white automatico dentro de folds
+  independent_route: diebold_mariano con varianza HAC debe coincidir
+prohibited_after_freeze:
+- reestimar o ajustar cualquier hiperparametro con datos confirmatorios
+- agregar, quitar o sustituir modelos
+- cambiar el score primario o el contraste registrado
+- modificar el universo de activos
+- extender el periodo confirmatorio despues de mirar los resultados
+specification:
+  config.yaml: 1faff3fb366b04f45e3c4e05720ea7a37793adee15c26062f68f0837766a8c90
+  research/PROTOCOL.md: 4a2a70fa5faccdc7aca07e7ce40d9cbdc971ca3cfaa9d5900ea8c5beb2a06e54
+  research/liquidity_robustness.yaml: c0dfba6be66e48bf2329872f3416ffcafe65394f1e1598f96a908d85885fc105
+  research/rolling_origin.yaml: 9367039e8e1d5d7b3b5bf5e7e6f913cb6eb71a49712d7eadb0b0e0768a2ed7f8
+implementation:
+  src/mm_ipsa/evaluation/__init__.py: 94ac2af8973c83e214def5dd2698d53084e6045a281307fce0959d1da9afb627
+  src/mm_ipsa/evaluation/calibration.py: 03454d3d11b705355c9c7bf9cacefe6eface482e221735b64c6c94d7f3c66400
+  src/mm_ipsa/evaluation/comparison.py: 9e02e22b8e693e8518f3c870c45d362c140bad518ec643eea8445e4ec71b14ed
+  src/mm_ipsa/evaluation/model_confidence.py: 86484c998749da9334024774cbf5e9dde965e0ffe1aafdfa837eba6f45dbe1cf
+  src/mm_ipsa/evaluation/scoring.py: ed50f80ab35d0dff434cf84dc77e8ac663724f2c76262eb5d2c72f116db87af6
+  src/mm_ipsa/mm/__init__.py: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  src/mm_ipsa/mm/bcd.py: bcb5d80e93b22f0dcdda49eb668220ba22f1f03dc95e77170b28c449b74dfa14
+  src/mm_ipsa/mm/diagnostics.py: 12d7911ecd0d0b464cb2ff3590d4228becc4b1db73b0c33ed6670be2d229fa05
+  src/mm_ipsa/mm/objective.py: 431e48c907b158bf0f7d0eda298cf1e9c446847e602586cfcf1dd6ea0d9698e1
+  src/mm_ipsa/mm/targets.py: e4c6dc3ee60ba489f02f5134d2a1b0fb388a1c7abba2d42ad2cfe066d796d848
+  src/mm_ipsa/models/__init__.py: e930b8d6ff5ba181d1d7ba03640f9eb56acb6fcf26db2440dd8f77e9c13913a3
+  src/mm_ipsa/models/benchmarks.py: 5638ad8ae51afb511b2bf7f1d38d0916a9103ab09312153764134990697ac896
+  src/mm_ipsa/models/dcc_garch.py: 81e06e40885491073e940e8d8c90f66c785c85435c0aa93c8aa6535b69239d71
+  src/mm_ipsa/portfolio/__init__.py: 09fc9109a11b9e99de03d521a4663e3326122cc0f55e99e888e83b65f1af8ccb
+  src/mm_ipsa/portfolio/optimization.py: a02e56a9d2cb54e85892a518648457812967e7bcdd3c4e4373ff2211335fd66d
+notes: 'Sello sobre v0.10.0. El contraste primario pasa de MM contra Gaussiano a MM
+  contra DCC-GARCH: es el estandar de la literatura y el unico dentro del Model Confidence
+  Set. El cambio se declara antes de que exista dato confirmatorio alguno. Este sello
+  reemplaza al emitido minutos antes, cuyo unico proposito fue calcular los hashes
+  previos a registrar las fechas en el protocolo.'

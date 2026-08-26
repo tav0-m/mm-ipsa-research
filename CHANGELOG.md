@@ -2,6 +2,36 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.11.0] - 2026-08-26
+
+Congelamiento verificable para el test confirmatorio. El protocolo lo declaraba
+desde v0.5.0 sin hacerlo efectivo.
+
+### Anadido
+
+- **Sello de preregistro** en `research/preregistration.yaml`, con el comando
+  `mm-ipsa freeze`. Fija la fecha de inicio confirmatorio, la muestra minima, el
+  contraste primario, la regla de decision y la lista de lo que queda prohibido
+  tras el sello.
+- El sello separa **especificacion** de **implementacion**. La primera
+  -configuracion, protocolo y cortes temporales- no puede cambiar: la
+  verificacion compara hashes y falla si alguno difiere. La segunda si puede,
+  porque una reescritura numericamente equivalente no altera el experimento,
+  pero cada archivo modificado queda enumerado.
+- Contrato de verificacion que exige especificacion intacta y coherencia entre
+  el estado declarado y la muestra confirmatoria disponible.
+- Diecisiete pruebas del modulo, incluida la comprobacion de que un cambio en la
+  configuracion rompe el sello y de que un cambio en el codigo no lo rompe.
+
+### Decidido
+
+- **Inicio confirmatorio: 2026-09-01**, con un minimo de 40 ventanas H=5 no
+  solapadas antes de admitir cualquier lectura. Son unos diez meses de mercado.
+- **El contraste primario pasa de MM contra Gaussiano a MM contra DCC-GARCH.**
+  Es el estandar de la literatura y el unico dentro del Model Confidence Set. El
+  cambio se declara antes de que exista dato confirmatorio, que es la unica
+  circunstancia en que redefinir un contraste primario es legitimo.
+
 ## [0.10.0] - 2026-08-25
 
 Ablacion controlada del efecto de recalibrar. Retracta una hipotesis que las

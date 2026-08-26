@@ -17,7 +17,13 @@ Si estas condiciones no se cumplen, la conclusión válida es que MM no demostr�
 
 - Entrenamiento inicial: hasta 2023-12-31.
 - Validación de desarrollo: desde 2024-01-02. Ya fue observada y no puede llamarse test final.
-- Test confirmatorio futuro: comienza solo después de congelar versión, universo, hipótesis, scores primarios e hiperparámetros. Su fecha todavía no se fija porque depende de la fecha de congelamiento.
+- Test confirmatorio: **congelado el 2026-08-26 sobre la versión v0.10.0**. La evaluación confirmatoria comienza el **2026-09-01** y requiere al menos **40 ventanas H=5 no solapadas** antes de admitir cualquier lectura; con cinco sesiones por ventana eso equivale a unos diez meses de mercado.
+
+El sello vive en [`research/preregistration.yaml`](preregistration.yaml) y distingue dos clases de contenido. La **especificación** —esta configuración, este protocolo y los cortes temporales— no puede cambiar: `mm-ipsa verify` compara sus hashes y falla si alguno difiere, de modo que el compromiso es exigible y no declarativo. La **implementación** sí puede cambiar, porque una reescritura numéricamente equivalente no altera el experimento, pero cada archivo modificado queda enumerado en la verificación.
+
+El contraste primario registrado es **CRPS de MM contra DCC-GARCH**, bilateral. Sustituye al contraste contra el Gaussiano que regía hasta v0.9.0: DCC-GARCH es el estándar de la literatura y el único modelo dentro del Model Confidence Set. El cambio se declara antes de que exista dato confirmatorio alguno, que es la única circunstancia en que redefinir un contraste primario es legítimo.
+
+Mientras la muestra confirmatoria no alcance el mínimo declarado, toda lectura del periodo es exploratoria y debe presentarse como tal. La verificación comprueba también esa coherencia entre el estado declarado y la muestra disponible.
 
 No se permite elegir `entropy_lambda`, vida media, shrinkage, número de escenarios o estrategia usando el test confirmatorio.
 

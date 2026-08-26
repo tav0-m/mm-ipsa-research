@@ -255,6 +255,48 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"{p_residual:.2e}",
             )
 
+
+    print("\n[verify] preregistro confirmatorio")
+    preregistration_path = Path("research/preregistration.yaml")
+    if not preregistration_path.is_file():
+        print("  [--] sin sello; el proyecto no declara test confirmatorio")
+    else:
+        from mm_ipsa.analysis.preregistration import (
+            audit_preregistration,
+            confirmatory_readiness,
+            load_preregistration,
+        )
+
+        document = load_preregistration(preregistration_path)
+        audit = audit_preregistration(document, Path.cwd())
+        # Un cambio en la especificacion anula el caracter confirmatorio: los
+        # hiperparametros, el universo y el protocolo son justamente lo que el
+        # sello promete no tocar.
+        verifier.check(
+            audit["specification_intact"],
+            "especificacion sellada intacta",
+            ", ".join(audit["specification_drift"]),
+        )
+        if audit["implementation_drift"]:
+            print(
+                "  [--] implementacion modificada tras el sello: "
+                + ", ".join(audit["implementation_drift"])
+            )
+        readiness = confirmatory_readiness(document, oos.index, H)
+        print(
+            f"  [--] {readiness['windows_available']}/{readiness['windows_required']} "
+            f"ventanas desde {readiness['confirmatory_start']}; "
+            f"estado={readiness['status']}"
+        )
+        # Mientras no se alcance la muestra minima, ningun resultado del periodo
+        # puede presentarse como confirmatorio.
+        verifier.check(
+            not readiness["ready"]
+            or str(cfg["evaluation"]["status"]) != "development_validation",
+            "estado declarado coherente con la muestra confirmatoria",
+            f"ready={readiness['ready']}, status={cfg['evaluation']['status']}",
+        )
+
     if args.scope == "full":
         print("\n[verify] evaluacion, portafolios y robustez temporal/liquidez")
         for path in (
