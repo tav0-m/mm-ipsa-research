@@ -1,4 +1,4 @@
-# MM-IPSA Research v0.11.1
+# MM-IPSA Research v0.12.0
 # Ejecucion
 numpy>=1.26,<2
 pandas>=2.2,<3

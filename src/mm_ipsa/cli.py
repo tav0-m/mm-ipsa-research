@@ -17,6 +17,8 @@ def _print_help() -> None:
         "  mm-ipsa run --step STEP [--resume | --plan]\n"
         "  mm-ipsa verify [--scope core|full]\n"
         "  mm-ipsa assets [--rolling-dir PATH] [--destination PATH]\n"
+        "  mm-ipsa audit-data [--prices PATH] [--output DIR]\n"
+        "  mm-ipsa freeze --start YYYY-MM-DD [--min-windows N]\n"
         "  mm-ipsa --version\n"
     )
 
@@ -35,6 +37,82 @@ def _assets(argv: Sequence[str]) -> int:
         print(artifact)
     return 0
 
+
+
+def _audit_data(argv: Sequence[str]) -> int:
+    """Audita la integridad estructural de la serie de precios."""
+    parser = argparse.ArgumentParser(
+        description="Comprueba calendario, eventos corporativos y precios estancados"
+    )
+    parser.add_argument("--prices", default="outputs/adj_close_prices.csv")
+    parser.add_argument("--extreme-threshold", type=float, default=8.0)
+    parser.add_argument("--scale-tolerance", type=float, default=3.0)
+    parser.add_argument("--output", default=None, help="directorio para los CSV")
+    args = parser.parse_args(argv)
+
+    import pandas as pd
+
+    from mm_ipsa.data.integrity import audit_prices
+
+    source = Path(args.prices)
+    if not source.is_file():
+        print(f"No existe el archivo de precios {source}", file=sys.stderr)
+        return 1
+
+    prices = pd.read_csv(source, index_col=0, parse_dates=True)
+    report = audit_prices(
+        prices,
+        extreme_threshold=args.extreme_threshold,
+        split_tolerance=args.scale_tolerance,
+    )
+
+    calendar = report["calendar"]
+    print(f"Auditoria de integridad sobre {source}")
+    print(f"  filas              {calendar['rows']}")
+    print(f"  fechas duplicadas  {calendar['duplicated_dates']}")
+    print(f"  filas en fin de semana {calendar['weekend_rows']}")
+    print(f"  hueco maximo       {calendar['largest_gap_days']} dias")
+
+    candidates = report["corporate_action_candidates"]
+    suspected = candidates.loc[candidates["suspected"]]
+    print(
+        f"  eventos corporativos {len(candidates)} candidatos, "
+        f"{len(suspected)} sospechosos"
+    )
+    for row in suspected.itertuples():
+        print(
+            f"    {row.asset} {row.date} ratio={row.ratio:.4f} "
+            f"~{row.nearest_split_ratio:.4f} persistencia={row.level_persistence:.2f}"
+        )
+
+    print(f"  retornos extremos  {len(report['extreme_returns'])}")
+
+    stale = report["stale_prices"].sort_values("unchanged_share", ascending=False)
+    print("  precios sin variacion, tres activos mas afectados:")
+    for row in stale.head(3).itertuples():
+        print(
+            f"    {row.asset:12s} {row.unchanged_share:6.2%} "
+            f"racha maxima {row.longest_unchanged_run}"
+        )
+
+    if args.output:
+        destination = Path(args.output)
+        destination.mkdir(parents=True, exist_ok=True)
+        candidates.to_csv(destination / "integrity_corporate_actions.csv", index=False)
+        report["extreme_returns"].to_csv(
+            destination / "integrity_extreme_returns.csv", index=False
+        )
+        report["stale_prices"].to_csv(
+            destination / "integrity_stale_prices.csv", index=False
+        )
+        print(f"  informes escritos en {destination}")
+
+    if report["passed"]:
+        print("Integridad estructural sin hallazgos bloqueantes")
+        return 0
+    for finding in report["blocking"]:
+        print(f"BLOQUEANTE: {finding}", file=sys.stderr)
+    return 1
 
 
 def _freeze(argv: Sequence[str]) -> int:
@@ -104,6 +182,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _assets(command_arguments)
     if command == "freeze":
         return _freeze(command_arguments)
+    if command == "audit-data":
+        return _audit_data(command_arguments)
     print(f"Comando desconocido: {command}", file=sys.stderr)
     _print_help()
     return 2

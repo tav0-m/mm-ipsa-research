@@ -2,6 +2,46 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.12.0] - 2026-08-27
+
+Auditoria de integridad estructural de la serie de precios. Ningun resultado
+publicado cambia: la serie actual pasa la auditoria sin hallazgos bloqueantes.
+
+### Anadido
+
+- `data/integrity.py`. Los controles de calidad existentes miden cobertura, y un
+  ajuste de evento corporativo mal aplicado tiene cobertura perfecta: produce un
+  salto de nivel espurio que ningun control de faltantes puede ver. El modulo
+  detecta ese patron por consistencia interna, sin requerir una segunda fuente.
+- Discriminante por persistencia de nivel. Un desplome de mercado y un split no
+  ajustado producen retornos igual de grandes; lo que los separa es que el
+  segundo desplaza el nivel de forma permanente. Cada candidato se evalua
+  comparando el nivel mediano antes y despues del salto.
+- Informe de precios estancados. `AGUAS-A` pasa el 5,0% de las jornadas sin
+  variacion de precio, con rachas de hasta seis dias, y la imputacion es cero:
+  es negociacion real que no se movio. Sesga la volatilidad a la baja.
+- Comando `mm-ipsa audit-data`, fuera del pipeline sellado.
+- 19 pruebas nuevas, incluida la deteccion de un split inyectado en 30 de 30
+  realizaciones independientes.
+
+### Corregido
+
+- La banda de deteccion de splits se media como porcentaje fijo. Un split real
+  nunca produce la razon exacta porque el precio observado incorpora tambien el
+  movimiento de mercado de esa jornada: con una tolerancia del 2% sobre una
+  volatilidad diaria del 1,5%, uno de cada cinco splits reales pasaba sin
+  marcarse. Ahora se expresa en escalas robustas del propio activo.
+
+### Pendiente declarado
+
+- El sello de preregistro cubre quince archivos de implementacion y ninguno esta
+  en `src/mm_ipsa/data/`, donde `transform.py` construye las ventanas terminales
+  y `download.py` aplica la imputacion. Un cambio en cualquiera alteraria los
+  resultados sin figurar como drift. Ampliar el alcance del sello es una decision
+  sobre el compromiso ya firmado y se deja explicita en vez de aplicarse.
+- La reconciliacion contra un segundo proveedor sigue pendiente: no se localizo
+  una fuente independiente y accesible que cubra este universo.
+
 ## [0.11.1] - 2026-08-26
 
 Pase de calidad de codigo. Ningun resultado cambia: los scores agregados

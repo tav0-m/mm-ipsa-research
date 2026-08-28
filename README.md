@@ -10,7 +10,7 @@ Plataforma de investigación cuantitativa independiente para estudiar generació
 
 La pregunta no es si MM-BCD reproduce media, covarianza y momentos superiores —lo hace con alta precisión—, sino si esa calibración mejora pronósticos probabilísticos y decisiones económicas fuera de muestra frente a controles Gaussian, Student-t, histórico EWMA y DCC-GARCH.
 
-**Versión pública actual:** `v0.11.1` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
+**Versión pública actual:** `v0.12.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
 
 ## Resultado principal
 
@@ -65,8 +65,10 @@ flowchart LR
 - Inferencia: moving-block bootstrap de 5.000 muestras con ancho de bloque elegido por Politis-White, corrección Holm sobre los doce contrastes y Diebold-Mariano con varianza HAC como verificación independiente.
 - Model Confidence Set al 95% para identificar qué modelos no son descartables como óptimos.
 - Diagnósticos de calibración PIT con soporte igualado entre modelos.
+- Auditoría de integridad estructural de precios: calendario, detección de eventos
+  corporativos mal ajustados por persistencia de nivel, y precios estancados.
 - Sensibilidad separada de liquidez seleccionada exclusivamente con métricas in-sample.
-- 225 pruebas automatizadas, Ruff y Pyright sin errores, y nueve etapas de linaje verificadas.
+- 244 pruebas automatizadas, Ruff y Pyright sin errores, y nueve etapas de linaje verificadas.
 
 El test confirmatorio está **congelado**: la especificación se selló el 2026-08-26 y la evaluación comienza el 2026-09-01, con `mm-ipsa verify` comprobando por hash que nada cambió. El contraste primario registrado es CRPS de MM contra DCC-GARCH, y se exigen al menos 40 ventanas antes de admitir cualquier lectura. El protocolo completo está en [research/PROTOCOL.md](research/PROTOCOL.md) y los cortes rolling-origin están congelados en [research/rolling_origin.yaml](research/rolling_origin.yaml).
 
@@ -128,6 +130,7 @@ La validación rolling-origin tarda aproximadamente dos minutos en la máquina d
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\mm-ipsa.exe verify --scope full
+.\.venv\Scripts\mm-ipsa.exe audit-data
 ```
 
 Un test verde prueba contratos de software y trazabilidad; no prueba rentabilidad futura. Los datos raw y los artefactos derivados no se distribuyen en Git. Consulta [DATA_POLICY.md](DATA_POLICY.md) y [ROADMAP.md](ROADMAP.md) para conocer los límites y siguientes etapas.
