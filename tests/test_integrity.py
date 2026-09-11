@@ -1,4 +1,5 @@
 import unittest
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -66,7 +67,7 @@ class TestCorporateActionDetection(unittest.TestCase):
         # Un desplome del 50% que se revierte al dia siguiente cae exactamente
         # sobre una razon de split. Solo la persistencia lo distingue.
         prices = _random_walk(seed=6)
-        original = float(prices.iloc[300, 2])
+        original = cast(float, prices.iloc[300, 2])
         prices.iloc[300, 2] = original * 0.5
 
         found = corporate_action_candidates(prices)
@@ -82,7 +83,9 @@ class TestCorporateActionDetection(unittest.TestCase):
         # fija del dos por ciento este caso -desviado un 2.2%- se perdia.
         prices = _random_walk(seed=2)
         prices.iloc[150:, 1] *= 3.0
-        observed = float(prices.iloc[150, 1] / prices.iloc[149, 1])
+        observed = cast(float, prices.iloc[150, 1]) / cast(
+            float, prices.iloc[149, 1]
+        )
         self.assertGreater(abs(observed / 3.0 - 1.0), 0.02)
 
         found = corporate_action_candidates(prices)
@@ -112,7 +115,9 @@ class TestCorporateActionDetection(unittest.TestCase):
 class TestExtremeReturns(unittest.TestCase):
     def test_flags_an_injected_outlier(self):
         prices = _random_walk(seed=8)
-        returns = np.log(prices / prices.shift(1)).dropna(how="all")
+        returns = cast(pd.DataFrame, np.log(prices / prices.shift(1))).dropna(
+            how="all"
+        )
         returns.iloc[100, 0] = 0.40
 
         found = extreme_returns(returns)
@@ -124,7 +129,11 @@ class TestExtremeReturns(unittest.TestCase):
         )
 
     def test_threshold_is_monotone_in_the_number_of_hits(self):
-        returns = np.log(_random_walk(seed=9)).diff().dropna(how="all")
+        returns = (
+            cast(pd.DataFrame, np.log(_random_walk(seed=9)))
+            .diff()
+            .dropna(how="all")
+        )
         self.assertGreaterEqual(
             len(extreme_returns(returns, threshold=3.0)),
             len(extreme_returns(returns, threshold=8.0)),
@@ -134,7 +143,7 @@ class TestExtremeReturns(unittest.TestCase):
 class TestStalePrices(unittest.TestCase):
     def test_counts_a_frozen_stretch(self):
         prices = _random_walk(seed=10)
-        prices.iloc[50:56, 0] = float(prices.iloc[50, 0])
+        prices.iloc[50:56, 0] = cast(float, prices.iloc[50, 0])
 
         report = stale_price_report(prices).set_index("asset")
 
@@ -181,7 +190,7 @@ class TestAuditPrices(unittest.TestCase):
 
     def test_market_outliers_are_reported_without_blocking(self):
         prices = _random_walk(seed=16)
-        prices.iloc[220, 1] *= 0.80
+        prices.iloc[220, 1] = cast(float, prices.iloc[220, 1]) * 0.80
 
         report = audit_prices(prices)
 

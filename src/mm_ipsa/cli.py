@@ -18,6 +18,7 @@ def _print_help() -> None:
         "  mm-ipsa verify [--scope core|full]\n"
         "  mm-ipsa assets [--rolling-dir PATH] [--destination PATH]\n"
         "  mm-ipsa audit-data [--prices PATH] [--output DIR]\n"
+        "  mm-ipsa shortfall [--source DIR] [--output DIR]\n"
         "  mm-ipsa freeze --start YYYY-MM-DD [--min-windows N]\n"
         "  mm-ipsa --version\n"
     )
@@ -115,6 +116,77 @@ def _audit_data(argv: Sequence[str]) -> int:
     return 1
 
 
+def _shortfall(argv: Sequence[str]) -> int:
+    """Contrasta la calibracion de Expected Shortfall de cada generador."""
+    parser = argparse.ArgumentParser(
+        description="Backtest de Expected Shortfall segun Acerbi y Szekely"
+    )
+    parser.add_argument("--source", default="outputs")
+    parser.add_argument("--observations", default="outputs/terminal_returns_H5_OOS.csv")
+    parser.add_argument("--output", default="outputs/risk")
+    parser.add_argument("--simulations", type=int, default=4_000)
+    args = parser.parse_args(argv)
+
+    import pandas as pd
+
+    from mm_ipsa.analysis.shortfall_report import run_shortfall_report
+    from mm_ipsa.config import load_config
+
+    observations_path = Path(args.observations)
+    if not observations_path.is_file():
+        print(f"No existe {observations_path}", file=sys.stderr)
+        return 1
+
+    observations = pd.read_csv(observations_path, index_col=0, parse_dates=True)
+    report = run_shortfall_report(
+        load_config(),
+        observations,
+        args.source,
+        args.output,
+        n_simulations=args.simulations,
+    )
+
+    summary = report["summary"]
+    print(f"Calibracion de cola sobre {len(observations)} observaciones solapadas")
+    print(
+        f"  {'modelo':12s} {'ES predicho':>12s} {'ES realizado':>13s} "
+        f"{'severidad':>10s} {'Holm<0.05':>10s}"
+    )
+    for record in summary.to_dict("records"):
+        print(
+            f"  {str(record['model']):12s} {float(record['predicted_es']):12.4f} "
+            f"{float(record['realised_tail_mean']):13.4f} "
+            f"{float(record['severity_ratio']):10.3f} "
+            f"{int(record['assets_underestimating']):6d}/"
+            f"{int(record['assets'])}"
+        )
+    portfolios = report["by_portfolio"]
+    print()
+    print("Por cartera, que es la unidad que valida un regulador:")
+    print(
+        f"  {'modelo':11s} {'cartera':12s} {'severidad':>10s} {'Holm':>8s} "
+        f"{'exc':>4s} {'zona':>9s}"
+    )
+    for record in portfolios.to_dict("records"):
+        print(
+            f"  {str(record['model']):11s} {str(record['strategy']):12s} "
+            f"{float(record['severity_ratio']):10.3f} "
+            f"{float(record['pvalue_z2_holm']):8.4f} "
+            f"{int(record['basel_exceptions']):4d} "
+            f"{str(record['basel_zone']):>9s}"
+        )
+    if not bool(portfolios["basel_sample_adequate"].iloc[0]):
+        expected = float(portfolios["basel_expected"].iloc[0])
+        print(
+            f"  Semaforo indicativo: solo {expected:.2f} excepciones esperadas "
+            "por cartera."
+        )
+
+    print(f"\n  informes en {Path(args.output)}")
+    print("Severidad por encima de uno indica perdidas de cola peores que el ES.")
+    return 0
+
+
 def _freeze(argv: Sequence[str]) -> int:
     """Sella la especificacion vigente y fija el inicio del test confirmatorio."""
     parser = argparse.ArgumentParser(
@@ -184,6 +256,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _freeze(command_arguments)
     if command == "audit-data":
         return _audit_data(command_arguments)
+    if command == "shortfall":
+        return _shortfall(command_arguments)
     print(f"Comando desconocido: {command}", file=sys.stderr)
     _print_help()
     return 2

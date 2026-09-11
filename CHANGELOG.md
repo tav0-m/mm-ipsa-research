@@ -2,6 +2,124 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.14.0] - 2026-09-11
+
+Segundo bloque de risk management: la mirada del regulador. El contraste de ES
+pasa de evaluar activos aislados a evaluar la cartera efectivamente mantenida, y
+se anade la clasificacion del Comite de Basilea.
+
+### Anadido
+
+- `evaluation/regulatory.py`. El semaforo de Basilea -verde hasta cuatro
+  excepciones, amarilla de cinco a nueve, roja diez o mas- esta definido para
+  doscientas cincuenta jornadas al noventa y nueve por ciento. Esos umbrales
+  salen de la binomial y trasladarlos a otra muestra cambia el error de tipo I
+  sin avisar. Las zonas se derivan aqui de la probabilidad acumulada, de donde
+  provienen, y una prueba comprueba que reproducen la tabla publicada, zonas y
+  multiplicadores de capital, en la configuracion del Comite.
+- Declaracion de adecuacion muestral. Con pocas excepciones esperadas el color
+  del semaforo dice mas del tamano de la muestra que del modelo, y el informe lo
+  advierte en vez de presentar una clasificacion sin potencia.
+- `observations_for_power`. Hacen falta 905 jornadas, cerca de tres anos y medio,
+  para clasificar fuera de la zona verde con potencia del ochenta por ciento un
+  modelo que subestima el riesgo al doble. Esa debilidad del contraste de VaR al
+  noventa y nueve por ciento es parte de por que el marco migro a ES.
+- `portfolio_shortfall_table`. La predictiva de cada cartera es la proyeccion de
+  los escenarios sobre sus pesos, derivados con los optimizadores del propio
+  proyecto.
+- 20 pruebas nuevas.
+
+### Resultado
+
+Severidad de cola por cartera, es decir cuanto peores fueron las perdidas
+realizadas frente al ES predicho:
+
+| Modelo | MaxSharpe | MinVariance | MinCVaR |
+|---|---:|---:|---:|
+| DCC-GARCH | **0.979** | 0.996 | 1.038 |
+| Student-t | 1.016 | 1.123 | 1.181 |
+| Gaussiano | 1.035 | 1.153 | 1.187 |
+| Historico EWMA | 1.101 | 1.261 | 1.255 |
+| MM-BCD | 1.123 | 1.188 | **1.309** |
+
+DCC-GARCH es el unico modelo con carteras conservadoras. MM-BCD con MinCVaR
+alcanza 1.309 y es el unico contraste que sobrevive a Holm sobre las quince
+combinaciones, con un valor p ajustado de 0.0037: las perdidas de cola realizadas
+superaron en casi un tercio al ES predicho.
+
+El patron es sistematico. MaxSharpe resulta la cartera mejor calibrada en los
+cinco modelos, y MinCVaR la peor en cuatro de cinco. La cartera construida
+explicitamente para minimizar riesgo de cola es la que peor calibra su cola, y el
+mecanismo es que MinCVaR optimiza contra el conjunto de escenarios del propio
+modelo: si esos escenarios subestiman la cola, el optimizador concentra posicion
+justo donde el modelo se equivoca mas. Es el error de estimacion amplificado por
+la optimizacion, localizado en la cola.
+
+El semaforo es indicativo y no concluyente: con 1.21 excepciones esperadas por
+cartera la muestra no alcanza el minimo que el propio modulo exige, y asi se
+reporta.
+
+## [0.13.0] - 2026-09-11
+
+Primer bloque de risk management. El pipeline calculaba Expected Shortfall desde
+la version inicial y nunca lo contrastaba: para VaR existian Kupiec,
+Christoffersen y el test conjunto, y para ES no habia nada. La asimetria importa
+porque la revision del marco de riesgo de mercado de Basilea III sustituyo VaR
+por ES como medida regulatoria, de modo que el proyecto validaba la medida que la
+industria dejo atras.
+
+### Anadido
+
+- `evaluation/expected_shortfall.py`. ES no es elicitable y por eso no admite un
+  backtest por conteo de excedencias como VaR. Se implementan los estadisticos Z1
+  y Z2 de Acerbi y Szekely (2014), cuya distribucion nula se obtiene simulando
+  desde la propia predictiva. Aqui esa simulacion es exacta porque la predictiva
+  del proyecto ya es discreta.
+- Veredicto conjunto sobre ambos estadisticos. Un estudio de potencia propio
+  muestra que ninguno domina: frente a una predictiva un veinte por ciento
+  estrecha, Z2 rechaza el 78% de las veces y Z1 el 15%; frente a una cola t(4) la
+  relacion se invierte, 65% contra 5%. Z2 es ciego a la cola pesada porque esta
+  produce excedencias menos frecuentes pero mas profundas y ambos efectos se
+  compensan en el estadistico incondicional. Un veredicto sobre uno solo dejaba
+  pasar justo ese modo de fallo.
+- Submuestras disjuntas para horizonte compuesto. Los retornos terminales a cinco
+  dias calculados cada jornada comparten cuatro dias con su vecino, con
+  autocorrelacion de 0,77 en el primer rezago. Aplicar el contraste directamente
+  daria valores p muy por debajo de los correctos. Se contrastan las cinco
+  submuestras disjuntas y se reporta si el veredicto cambia segun el
+  desplazamiento.
+- `analysis/shortfall_report.py` y comando `mm-ipsa shortfall`.
+- 23 pruebas nuevas, incluidas calibracion de tamano y potencia empiricas.
+
+### Resultado
+
+Ordenados por severidad de cola, es decir cuanto peores fueron las perdidas
+realizadas frente al ES predicho:
+
+| Modelo | ES predicho | ES realizado | Severidad |
+|---|---:|---:|---:|
+| DCC-GARCH | -0.0842 | -0.0815 | 0.971 |
+| Student-t | -0.0722 | -0.0733 | 1.025 |
+| Gaussiano | -0.0708 | -0.0745 | 1.062 |
+| MM-BCD | -0.0662 | -0.0713 | 1.086 |
+| Historico EWMA | -0.0652 | -0.0703 | 1.091 |
+
+DCC-GARCH es el unico conservador. MM-BCD subestima la cola en un 8,6%, penultimo
+del conjunto, lo que es coherente con el resultado central del proyecto y le
+anade un mecanismo: ajustar los cuatro primeros momentos no impone ninguna
+restriccion sobre la cola mas alla del cuantil del cinco por ciento.
+
+Ninguna diferencia sobrevive a la correccion de Holm sobre los quince activos.
+El orden de las estimaciones puntuales es consistente, la evidencia no alcanza
+significancia con esta muestra, y se reporta asi.
+
+### Nota sobre el sello
+
+`evaluation/` esta dentro del alcance sellado, de modo que el modulo nuevo figura
+como cambio de implementacion en la auditoria del preregistro. La especificacion
+permanece intacta y el test confirmatorio no se ve afectado: el contraste
+primario registrado sigue siendo CRPS de MM contra DCC-GARCH.
+
 ## [0.12.0] - 2026-08-27
 
 Auditoria de integridad estructural de la serie de precios. Ningun resultado
