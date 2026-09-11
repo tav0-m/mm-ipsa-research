@@ -8,7 +8,7 @@ Plataforma de investigación cuantitativa independiente para estudiar generació
 
 La pregunta no es si MM-BCD reproduce media, covarianza y momentos superiores —lo hace con alta precisión—, sino si esa calibración mejora pronósticos probabilísticos y decisiones económicas fuera de muestra frente a controles Gaussian, Student-t, histórico EWMA y DCC-GARCH.
 
-**Versión pública actual:** `v0.15.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
+**Versión pública actual:** `v0.16.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
 
 ## Resultado principal
 
@@ -68,10 +68,12 @@ flowchart LR
   de cartera, con semáforo del Comité y declaración de adecuación muestral.
 - Atribución de cola por descomposición de Euler: qué posiciones producen la
   pérdida, y si el modelo acierta sobre su composición y no solo su magnitud.
+- Diagnóstico de prociclicidad: si los excesos se concentran en el régimen de
+  volatilidad alta, clasificado con información estrictamente anterior.
 - Auditoría de integridad estructural de precios: calendario, detección de eventos
   corporativos mal ajustados por persistencia de nivel, y precios estancados.
 - Sensibilidad separada de liquidez seleccionada exclusivamente con métricas in-sample.
-- 303 pruebas automatizadas, Ruff y Pyright sin errores, y nueve etapas de linaje verificadas.
+- 318 pruebas automatizadas, Ruff y Pyright sin errores, y nueve etapas de linaje verificadas.
 
 El test confirmatorio está **congelado**: la especificación se selló el 2026-08-26 y la evaluación comienza el 2026-09-01, con `mm-ipsa verify` comprobando por hash que nada cambió. El contraste primario registrado es CRPS de MM contra DCC-GARCH, y se exigen al menos 40 ventanas antes de admitir cualquier lectura. El protocolo completo está en [research/PROTOCOL.md](research/PROTOCOL.md) y los cortes rolling-origin están congelados en [research/rolling_origin.yaml](research/rolling_origin.yaml).
 

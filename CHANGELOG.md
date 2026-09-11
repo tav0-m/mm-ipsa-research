@@ -2,6 +2,56 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.16.0] - 2026-09-11
+
+Cuarto bloque de risk management: prociclicidad. Un modelo puede estar bien
+calibrado en promedio y fallar justo cuando importa, que es la critica central a
+los modelos internos y la razon de que el marco regulatorio exija una
+calibracion sobre periodo de estres.
+
+### Anadido
+
+- `evaluation/procyclicality.py`. El diagnostico no construye un estres
+  sintetico: lo busca en los datos. El periodo de evaluacion contiene un cambio
+  de regimen al alza, con volatilidad anualizada que pasa de 11,1% en el segundo
+  semestre de 2024 a 20,6% en el primero de 2026, y las dos peores ventanas de
+  veintiuna jornadas ocurren ambas en 2026.
+- Clasificacion estrictamente ex-ante. Un retorno terminal fechado en ``t`` cubre
+  ``[t - H + 1, t]``, de modo que la volatilidad que lo clasifica se mide sobre
+  jornadas anteriores a ``t - H + 1``. Dos pruebas lo fijan: un shock dentro de
+  la ventana no altera su propia etiqueta, y uno anterior si la altera.
+- Prueba exacta de Fisher sobre la concentracion de excesos, que evita la
+  aproximacion asintotica con pocos eventos.
+- 15 pruebas nuevas.
+
+### Resultado
+
+Los excesos se concentran en el regimen tensionado en las quince combinaciones
+de modelo y cartera, sin excepcion. Las tasas de exceso en calma van de 1,2% a
+8,6%; en tension, de 14,8% a 29,6%.
+
+| Modelo | Calma | Tension |
+|---|---:|---:|
+| DCC-GARCH | 1,2 - 2,5% | 14,8% |
+| Historico EWMA | 1,2 - 3,7% | 18,5 - 22,2% |
+| Gaussiano | 2,5 - 7,4% | 22,2 - 25,9% |
+| Student-t | 2,5 - 7,4% | 22,2 - 25,9% |
+| MM-BCD | 4,9 - 8,6% | 22,2 - 29,6% |
+
+DCC-GARCH mantiene la tasa mas baja bajo tension en sus tres carteras, tres
+veces el nominal frente a casi seis de MM-BCD con MinCVaR. Arrastra estado
+condicional, de modo que su limite reacciona al cambio de regimen mientras los
+generadores estaticos siguen describiendo la calma que ya paso.
+
+### Limites
+
+Tras la correccion de Holm sobre las quince combinaciones sobreviven cuatro. Y
+hay una restriccion mas seria que la multiplicidad: las veintisiete ventanas
+tensionadas forman un solo episodio contiguo desde junio de 2025. La prueba de
+Fisher las trata como ensayos independientes, lo que exagera la evidencia. El
+diagnostico documenta lo que ocurrio en un cambio de regimen, y no establece una
+propiedad general de los modelos.
+
 ## [0.15.0] - 2026-09-11
 
 Tercer bloque de risk management: atribucion de cola. Los contrastes anteriores

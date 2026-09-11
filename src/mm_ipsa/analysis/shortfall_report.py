@@ -16,7 +16,7 @@ privilegia el mas favorable.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -258,6 +258,7 @@ def run_shortfall_report(
     observations: pd.DataFrame,
     source: str | Path,
     output: str | Path,
+    daily: pd.DataFrame,
     *,
     n_simulations: int = 4_000,
 ) -> dict[str, pd.DataFrame]:
@@ -284,14 +285,17 @@ def run_shortfall_report(
     table.to_csv(target / "expected_shortfall_by_asset.csv", index=False)
     summary.to_csv(target / "expected_shortfall_summary.csv", index=False)
     attribution = attribution_table(observations, predictives, main_cfg)
+    procyclicality = procyclicality_table(daily, observations, predictives, main_cfg)
 
     portfolios.to_csv(target / "expected_shortfall_by_portfolio.csv", index=False)
     attribution.to_csv(target / "tail_attribution.csv", index=False)
+    procyclicality.to_csv(target / "procyclicality.csv", index=False)
     return {
         "by_asset": table,
         "summary": summary,
         "by_portfolio": portfolios,
         "attribution": attribution,
+        "procyclicality": procyclicality,
     }
 
 
@@ -361,3 +365,68 @@ def attribution_table(
             )
 
     return pd.DataFrame(rows)
+
+
+def procyclicality_table(
+    daily: pd.DataFrame,
+    observations: pd.DataFrame,
+    predictives: dict[str, tuple[np.ndarray, np.ndarray]],
+    main_cfg: dict[str, Any],
+    *,
+    lookback: int = 63,
+    quantile: float = 0.75,
+) -> pd.DataFrame:
+    """Concentracion de excesos por regimen de volatilidad, para cada cartera.
+
+    Se evalua sobre ventanas disjuntas porque un exceso solapado no es un ensayo
+    nuevo, y el regimen se determina con volatilidad anterior al inicio de cada
+    ventana.
+    """
+    from mm_ipsa.evaluation.procyclicality import (
+        STRESSED,
+        breach_concentration,
+        classify_regimes,
+        trailing_volatility,
+    )
+    from mm_ipsa.evaluation.scoring import weighted_quantile
+
+    horizon = int(main_cfg["data"]["H"])
+    alpha = float(main_cfg["portfolio"]["alpha_cvar"])
+    disjoint = observations.iloc[::horizon]
+    ends = cast(pd.DatetimeIndex, pd.DatetimeIndex(disjoint.index))
+
+    volatility = trailing_volatility(daily, ends, horizon, lookback)
+    regimes = classify_regimes(volatility, quantile)
+    labelled = regimes.notna().to_numpy()
+    classified = regimes.dropna()
+
+    stressed = (classified == STRESSED).to_numpy()
+    episodes = int(np.sum(stressed[1:] & ~stressed[:-1]) + int(stressed[0]))
+
+    matrix = disjoint.to_numpy()
+    rows: list[dict[str, Any]] = []
+    for model, (scenarios, probabilities) in predictives.items():
+        for strategy, weights in portfolio_weights(
+            scenarios, probabilities, main_cfg
+        ).items():
+            var = weighted_quantile(scenarios @ weights, probabilities, alpha)
+            result = breach_concentration(
+                (matrix @ weights)[labelled], classified, var, alpha
+            )
+            rows.append(
+                {
+                    "model": model,
+                    "strategy": strategy,
+                    "calm_breach_rate": result["calm"]["breach_rate"],
+                    "stressed_breach_rate": result["stressed"]["breach_rate"],
+                    "rate_ratio": result["rate_ratio"],
+                    "pvalue": result["pvalue"],
+                    "total_breaches": result["total_breaches"],
+                    "reliable": result["reliable"],
+                    "stress_episodes": episodes,
+                }
+            )
+
+    table = pd.DataFrame(rows)
+    table["pvalue_holm"] = holm_adjust(table["pvalue"])
+    return table.sort_values("stressed_breach_rate").reset_index(drop=True)

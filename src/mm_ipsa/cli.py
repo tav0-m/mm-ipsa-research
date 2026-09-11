@@ -123,6 +123,7 @@ def _shortfall(argv: Sequence[str]) -> int:
     )
     parser.add_argument("--source", default="outputs")
     parser.add_argument("--observations", default="outputs/terminal_returns_H5_OOS.csv")
+    parser.add_argument("--daily", default="outputs/daily_returns_OOS.csv")
     parser.add_argument("--output", default="outputs/risk")
     parser.add_argument("--simulations", type=int, default=4_000)
     args = parser.parse_args(argv)
@@ -138,11 +139,13 @@ def _shortfall(argv: Sequence[str]) -> int:
         return 1
 
     observations = pd.read_csv(observations_path, index_col=0, parse_dates=True)
+    daily = pd.read_csv(args.daily, index_col=0, parse_dates=True)
     report = run_shortfall_report(
         load_config(),
         observations,
         args.source,
         args.output,
+        daily,
         n_simulations=args.simulations,
     )
 
@@ -195,6 +198,23 @@ def _shortfall(argv: Sequence[str]) -> int:
             f"{float(record['correlation_spread']):7.2f}"
         )
     print("  rho cerca de cero: el modelo no informa que posiciones mueven la cola.")
+
+    cycle = report["procyclicality"]
+    episodes = int(cycle["stress_episodes"].iloc[0])
+    print()
+    print("Concentracion de excesos por regimen de volatilidad:")
+    print(f"  {'modelo':11s} {'cartera':12s} {'calma':>7s} {'tension':>8s} {'Holm':>8s}")
+    for record in cycle.to_dict("records"):
+        print(
+            f"  {str(record['model']):11s} {str(record['strategy']):12s} "
+            f"{float(record['calm_breach_rate']):7.1%} "
+            f"{float(record['stressed_breach_rate']):8.1%} "
+            f"{float(record['pvalue_holm']):8.4f}"
+        )
+    print(
+        f"  El regimen tensionado son {episodes} episodio(s): la evidencia "
+        "descansa en un solo cambio de regimen."
+    )
 
     print(f"\n  informes en {Path(args.output)}")
     print("Severidad por encima de uno indica perdidas de cola peores que el ES.")
