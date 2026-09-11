@@ -182,6 +182,20 @@ def _shortfall(argv: Sequence[str]) -> int:
             "por cartera."
         )
 
+    attribution = report["attribution"].sort_values(
+        "conditional_rank_correlation", ascending=False
+    )
+    print()
+    print("Acierto sobre la composicion de la cola, sin el peso de la cartera:")
+    print(f"  {'modelo':11s} {'cartera':12s} {'rho':>7s} {'rango':>7s}")
+    for record in attribution.to_dict("records"):
+        print(
+            f"  {str(record['model']):11s} {str(record['strategy']):12s} "
+            f"{float(record['conditional_rank_correlation']):+7.3f} "
+            f"{float(record['correlation_spread']):7.2f}"
+        )
+    print("  rho cerca de cero: el modelo no informa que posiciones mueven la cola.")
+
     print(f"\n  informes en {Path(args.output)}")
     print("Severidad por encima de uno indica perdidas de cola peores que el ES.")
     return 0

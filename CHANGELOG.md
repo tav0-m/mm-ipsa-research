@@ -2,6 +2,60 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.15.0] - 2026-09-11
+
+Tercer bloque de risk management: atribucion de cola. Los contrastes anteriores
+respondian si el ES predicho acertaba en magnitud. Este responde si acierta en
+composicion, que es la pregunta accionable para una funcion de riesgo porque
+determina que se cubre.
+
+### Anadido
+
+- `evaluation/attribution.py`. El ES es homogeneo de grado uno en los pesos, de
+  modo que el teorema de Euler lo descompone de forma exacta: la contribucion de
+  cada posicion es su peso por la esperanza condicional a que la cartera este en
+  cola. La aditividad no es automatica en soporte discreto y exige repartir la
+  masa del cuantil igual que el ES agregado; una prueba comprueba que los
+  componentes suman el total a precision de maquina y que ese total coincide con
+  `lower_tail_mean`.
+- Contraste entre composicion predicha y realizada, evaluado sobre las
+  submuestras disjuntas del horizonte y con la cola ensanchada al veinte por
+  ciento, porque al cinco quedan menos de diez observaciones realizadas.
+- 16 pruebas nuevas.
+
+### Corregido
+
+- La primera version comparaba las contribuciones ya multiplicadas por el peso.
+  Como el vector de pesos es identico en la descomposicion predicha y en la
+  realizada, una cartera concentrada producia correlacion cercana a uno sin que
+  el modelo acertara nada: MinCVaR y MaxSharpe, con n efectivo de 6 frente a 15
+  de MinVariance, marcaban 0.99. La medida de acierto se calcula ahora sobre las
+  esperanzas condicionales, que es lo unico que el modelo aporta. La version
+  confundida se conserva como descriptor de la cartera, etiquetada como tal.
+
+### Resultado
+
+Con la metrica corregida ningun modelo informa bien la composicion de la cola:
+las correlaciones caen de 0.99 a un rango de -0.15 a +0.52, con media +0.22.
+Los modelos aciertan aproximadamente la magnitud de la perdida y son casi ciegos
+a su origen.
+
+El patron por tipo de cartera es sistematico. MinVariance y MaxSharpe dan
+correlacion positiva en los cinco modelos, alrededor de +0.35. MinCVaR da
+correlacion negativa en cuatro de cinco. El contraste pareado dentro de cada
+modelo arroja una diferencia media de -0.40, negativa en 23 de 25 combinaciones
+de modelo y submuestra.
+
+Ese resultado es coherente con la severidad de cola de la version anterior y
+sugiere el mismo mecanismo: MinCVaR elige pesos que minimizan la cola segun el
+propio modelo, de modo que carga sobre los activos cuyo riesgo de cola el modelo
+subestima. La optimizacion selecciona sobre el error del modelo.
+
+La evidencia no esta establecida. Los 25 pares comparten modelo o submuestra y
+no son independientes; tratando cada modelo como una observacion quedan cuatro
+signos negativos de cinco, con valor p de 0.19. Con cinco modelos un test de
+signos no puede bajar de 0.031 ni con unanimidad.
+
 ## [0.14.0] - 2026-09-11
 
 Segundo bloque de risk management: la mirada del regulador. El contraste de ES

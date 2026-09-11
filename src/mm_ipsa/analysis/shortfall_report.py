@@ -283,5 +283,81 @@ def run_shortfall_report(
 
     table.to_csv(target / "expected_shortfall_by_asset.csv", index=False)
     summary.to_csv(target / "expected_shortfall_summary.csv", index=False)
+    attribution = attribution_table(observations, predictives, main_cfg)
+
     portfolios.to_csv(target / "expected_shortfall_by_portfolio.csv", index=False)
-    return {"by_asset": table, "summary": summary, "by_portfolio": portfolios}
+    attribution.to_csv(target / "tail_attribution.csv", index=False)
+    return {
+        "by_asset": table,
+        "summary": summary,
+        "by_portfolio": portfolios,
+        "attribution": attribution,
+    }
+
+
+def attribution_table(
+    observations: pd.DataFrame,
+    predictives: dict[str, tuple[np.ndarray, np.ndarray]],
+    main_cfg: dict[str, Any],
+    *,
+    alpha: float = 0.20,
+) -> pd.DataFrame:
+    """Acierto de cada modelo sobre la composicion de la cola, no su magnitud.
+
+    Se evalua sobre las submuestras disjuntas del horizonte y se promedia, porque
+    una sola eleccion de desplazamiento da una composicion realizada demasiado
+    ruidosa para leerla.
+
+    El ``alpha`` por defecto es mas ancho que el del protocolo: con la cola del
+    cinco por ciento quedan menos de diez observaciones realizadas y la
+    composicion deja de ser estimable.
+    """
+    from mm_ipsa.evaluation.attribution import (
+        compare_attribution,
+        component_expected_shortfall,
+        realised_component_shortfall,
+    )
+
+    horizon = int(main_cfg["data"]["H"])
+    matrix = observations.to_numpy()
+    rows: list[dict[str, Any]] = []
+
+    for model, (scenarios, probabilities) in predictives.items():
+        for strategy, weights in portfolio_weights(
+            scenarios, probabilities, main_cfg
+        ).items():
+            predicted = component_expected_shortfall(
+                scenarios, probabilities, weights, alpha
+            )
+            comparisons = [
+                compare_attribution(
+                    predicted,
+                    realised_component_shortfall(
+                        matrix[offset::horizon], weights, alpha
+                    ),
+                )
+                for offset in range(horizon)
+            ]
+            correlations = [
+                c["conditional_rank_correlation"] for c in comparisons
+            ]
+            rows.append(
+                {
+                    "model": model,
+                    "strategy": strategy,
+                    "alpha": alpha,
+                    "conditional_rank_correlation": float(np.mean(correlations)),
+                    "correlation_spread": float(
+                        max(correlations) - min(correlations)
+                    ),
+                    "share_rank_correlation": float(
+                        np.mean([c["share_rank_correlation"] for c in comparisons])
+                    ),
+                    "composition_error": float(
+                        np.mean([c["composition_error"] for c in comparisons])
+                    ),
+                    "reliable": all(c["reliable"] for c in comparisons),
+                }
+            )
+
+    return pd.DataFrame(rows)
