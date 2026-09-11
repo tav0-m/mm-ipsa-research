@@ -439,7 +439,7 @@ resultados proviene de correcciones de método.
 - Ejecución reanudable basada en hashes con `--resume` y planificación sin efectos con `--plan`.
 - CI ampliado a Python 3.11 y 3.12, Ruff, Pyright y construcción del paquete.
 - Contratos de tipos explícitos para fechas, linaje, resultados rolling-origin y el solver BCD.
-- Carrusel de cinco imágenes para comunicar resultados, incertidumbre y límites en LinkedIn.
+- Carrusel de cinco imágenes para comunicar resultados, incertidumbre y límites.
 - Limpieza de código muerto, alias históricos y documentación ajena a la release.
 
 ### Compatibilidad
@@ -455,7 +455,7 @@ resultados proviene de correcciones de método.
 - Inferencia pareada mediante moving-block bootstrap y corrección de Holm.
 - Robustez de liquidez con selección exclusivamente in-sample.
 - Nueve etapas de linaje, snapshots SHA-256 y 45 pruebas automatizadas.
-- Informe metodológico, ficha pública y activos para comunicación en LinkedIn.
+- Informe metodológico, ficha pública y activos de comunicación.
 
 ### Resultado principal
 

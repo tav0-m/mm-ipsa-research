@@ -30,7 +30,7 @@ def _assets(argv: Sequence[str]) -> int:
         "--rolling-dir",
         default="outputs/robustness/rolling_origin",
     )
-    parser.add_argument("--destination", default="docs/assets")
+    parser.add_argument("--destination", default="research/assets")
     args = parser.parse_args(argv)
     from mm_ipsa.analysis.release_assets import generate_release_assets
 

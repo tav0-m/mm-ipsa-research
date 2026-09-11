@@ -4,8 +4,6 @@
 [![Python 3.11–3.12](https://img.shields.io/badge/Python-3.11%E2%80%933.12-3776AB.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-![Resumen de MM-IPSA Research](docs/assets/linkedin-project-card.png)
-
 Plataforma de investigación cuantitativa independiente para estudiar generación de escenarios discretos por ajuste de momentos y su utilidad en decisiones de portafolio sobre acciones chilenas.
 
 La pregunta no es si MM-BCD reproduce media, covarianza y momentos superiores —lo hace con alta precisión—, sino si esa calibración mejora pronósticos probabilísticos y decisiones económicas fuera de muestra frente a controles Gaussian, Student-t, histórico EWMA y DCC-GARCH.
@@ -34,9 +32,9 @@ En los diagnósticos PIT rolling-origin ponderados por ventanas, MM-BCD queda m�
 
 > **Correcciones metodológicas acumuladas.** En v0.6.0, los grados de libertad del Student-t eran una constante no estimada (`6.0`); estimarlos por verosimilitud en cada origen invalidó tres conclusiones de v0.5.0. En v0.7.0 se añade DCC-GARCH como cuarto control y MM queda fuera del conjunto de confianza en las tres reglas. En v0.8.0 la solución de MM pasa a publicarse como mezcla de los starts elegibles, porque la elección del mejor start introducía una variación del mismo orden que los efectos contrastados. En v0.9.0 todos los generadores se recalibran en cada fecha de rebalanceo, de modo que H4 por fin se contrasta bajo un protocolo simétrico: **ninguna de las diecisiete estrategias supera al Equal Weight tras corregir por multiplicidad**. En v0.10.0 una ablación controlada descarta que el cambio de ranking entre diseños se deba a la recalibración; el detalle está en [research/RESULTS_20260825.md](research/RESULTS_20260825.md).
 
-![Estabilidad temporal de CRPS](docs/assets/rolling-origin-crps.png)
+![Estabilidad temporal de CRPS](research/assets/rolling-origin-crps.png)
 
-![Diferencias pareadas de scores](docs/assets/paired-score-differences.png)
+![Diferencias pareadas de scores](research/assets/paired-score-differences.png)
 
 ## Diseño de investigación
 
@@ -91,7 +89,7 @@ src/mm_ipsa/
 └── verification.py # contratos científicos y de linaje
 ```
 
-`research/` conserva el protocolo y el informe; `docs/` contiene únicamente la ficha pública; `tests/` verifica contratos matemáticos, temporales y operacionales. Los datos y resultados derivados permanecen fuera de Git.
+`research/` conserva el protocolo, el informe y las figuras de resultados; `tests/` verifica contratos matemáticos, temporales y operacionales. Los datos y resultados derivados permanecen fuera de Git.
 
 ## Inicio rápido en PowerShell
 
@@ -148,8 +146,6 @@ Un test verde prueba contratos de software y trazabilidad; no prueba rentabilida
 - [Resultados de v0.5.0, superados](research/RESULTS_20260810.md)
 - [Guía de implementación](research/IMPLEMENTATION_GUIDE.md)
 - [Referencias](research/REFERENCES.md)
-- [Ficha pública](docs/index.html)
-- [Borrador para LinkedIn](docs/LINKEDIN_POST_ES.md)
 - [Historial de versiones](CHANGELOG.md)
 
 ## Licencia

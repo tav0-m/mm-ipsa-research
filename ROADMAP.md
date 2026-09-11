@@ -6,7 +6,7 @@
 - [x] Comparaciones probabilísticas pareadas con incertidumbre.
 - [x] Robustez de liquidez sin look-ahead.
 - [x] Validación expanding rolling-origin.
-- [x] CI, licencia, ficha pública y materiales para LinkedIn.
+- [x] CI, licencia y figuras de resultados para el informe.
 
 ## v0.5 — Eficiencia experimental
 
