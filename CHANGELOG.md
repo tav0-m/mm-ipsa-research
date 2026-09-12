@@ -2,6 +2,55 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.17.0] - 2026-09-11
+
+Cierre del bloque de risk management: la calibracion estresada, que es la
+respuesta que el marco regulatorio da al problema diagnosticado en la version
+anterior. Se contrasta en vez de asumirse.
+
+### Anadido
+
+- `analysis/stressed_calibration.py`. Calibra los cinco generadores dos veces
+  sobre la misma especificacion, con el tramo tensionado de la muestra y con el
+  tramo en calma, y evalua ambas sobre el mismo periodo posterior. La unica
+  diferencia entre las dos es la historia que las alimenta.
+- Medicion de las dos caras del intercambio. Un informe que solo muestre la
+  reduccion de excesos presenta media pregunta: el limite estresado es mas alto
+  en todo momento, tambien en calma, y ese conservadurismo es capital
+  inmovilizado.
+- 12 pruebas nuevas.
+
+### Resultado
+
+Los tramos de calibracion difieren casi al doble en volatilidad anualizada:
+16,6% en 2022-2023 contra 31,6% en 2020-2021.
+
+| Calibracion | ES | Capital | Excesos en calma | Excesos en tension |
+|---|---:|---:|---:|---:|
+| Calma | -0,033 a -0,038 | 1,00 | 1,2 - 7,4% | 14,8 - 25,9% |
+| Estres | -0,082 a -0,096 | 2,15 - 2,91 | 0,0% | 0,0% |
+
+La calibracion estresada elimina los excesos en los dos regimenes y en los cinco
+modelos, y cobra entre 2,15 y 2,91 veces el capital. El remedio funciona y no es
+gratis.
+
+El capital exigido ordena los modelos. MM-BCD necesita 2,91 veces su limite en
+calma para alcanzar adecuacion y DCC-GARCH solo 2,15, un veintiseis por ciento
+menos. La razon esta en el punto de partida: la calibracion en calma de MM-BCD
+produce la cola mas fina de las cinco, -0,033 frente a -0,038 del historico, de
+modo que es la que mas debe inflarse. Coincide con las tres versiones previas.
+
+### Limites
+
+Cero excesos en ciento ocho ventanas es una sobrecorreccion, no un ajuste fino:
+con el nivel nominal del cinco por ciento se esperarian unos cinco. La
+comparacion entre modelos bajo calibracion estresada mide por eso cuanto capital
+pide cada uno, y no cual acierta mejor, porque en adecuacion todos saturan.
+
+El tramo etiquetado como calma para calibrar, 2022-2023, no es la calibracion
+publicada del proyecto, que pondera 2020-2023 con decaimiento exponencial. Las
+cifras de esta tabla no son comparables con las de la version anterior.
+
 ## [0.16.0] - 2026-09-11
 
 Cuarto bloque de risk management: prociclicidad. Un modelo puede estar bien
