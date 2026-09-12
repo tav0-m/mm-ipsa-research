@@ -2,6 +2,62 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.21.0] - 2026-09-11
+
+Contraste del hallazgo anterior contra lo unico que decide: el desempeno fuera de
+muestra. La version 0.20.0 mostro que elevar `cov_weight` mejora el ajuste de
+covarianza cuarenta veces, y calificó de suboptima la ponderacion publicada. Esa
+calificacion era prematura.
+
+### El experimento
+
+Se calibra MM-BCD sobre el universo sellado con cuatro pesos de dependencia y se
+puntua cada version contra las mismas ciento veintiuna ventanas disjuntas fuera
+de muestra, con las reglas de scoring del proyecto.
+
+| cov_weight | Error de covarianza | CRPS | Energy | Variogram |
+|---:|---:|---:|---:|---:|
+| 0.05 publicado | 4.63e-05 | 0.021042 | 0.101355 | 0.650811 |
+| 1.00 | 1.23e-05 | 0.021250 | 0.102959 | 0.640942 |
+| 5.00 | 1.05e-06 | 0.021260 | 0.103590 | 0.646586 |
+| 20.0 | 1.18e-06 | 0.021351 | 0.103725 | 0.640638 |
+
+Contraste pareado con bootstrap por bloques, ancho elegido por Politis-White y
+correccion de Holm sobre las tres reglas:
+
+| Regla | Diferencia | Relativa | IC95 | p Holm |
+|---|---:|---:|---|---:|
+| CRPS | +0.000308 | +1.46% | [+0.00026, +0.00036] | **0.0012** |
+| Energy Score | +0.002371 | +2.34% | [+0.00194, +0.00280] | **0.0012** |
+| Variogram Score | -0.010173 | -1.56% | [-0.02156, +0.00520] | 0.2751 |
+
+### Resultado
+
+Ajustar la covarianza en muestra treinta y nueve veces mas fino **degrada de
+forma significativa dos de las tres reglas**, con intervalos que excluyen el
+cero. La tercera mejora sin alcanzar significancia.
+
+La ponderacion publicada no es suboptima: **es regularizacion**. La covarianza
+objetivo no es un hecho sino una estimacion, construida con ponderacion
+exponencial y contraccion de Ledoit-Wolf sobre muestra finita. Ajustarla hasta
+1e-06 significa ajustar su error de estimacion, y el peso bajo impide que el
+conjunto de escenarios persiga ese ruido.
+
+Es la tesis central del proyecto en su forma mas nitida, y por primera vez con
+significancia estadistica. Las versiones anteriores mostraban que la precision de
+momentos no se traducia en superioridad predictiva. Esta muestra algo mas fuerte:
+**empujar esa precision mas alla del punto publicado activamente perjudica**.
+
+### Correccion a la version anterior
+
+Donde 0.20.0 dice que `cov_weight=0.05` es subóptima para el ajuste de
+dependencia, debe leerse que lo es unicamente para el ajuste en muestra, que no
+es el objetivo del proyecto. Bajo el criterio que si importa, el valor sellado
+resulta preferible a cualquiera de las alternativas probadas.
+
+El sello impidio tocarlo mientras el experimento estaba en curso, y en este caso
+impidio empeorarlo.
+
 ## [0.20.0] - 2026-09-11
 
 Correccion de la version anterior. El diagnostico de 0.19.0 concluyo que la

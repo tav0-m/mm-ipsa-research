@@ -10,7 +10,7 @@ La pregunta no es si MM-BCD reproduce media, covarianza y momentos superiores �
 
 El proyecto contesta esa pregunta por dos vías. La **predictiva** evalúa toda la distribución con reglas de scoring propias. La de **riesgo** evalúa únicamente la cola, que es donde una función de riesgo toma decisiones y donde un buen score promedio puede esconder un mal comportamiento.
 
-**Versión pública actual:** `v0.20.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
+**Versión pública actual:** `v0.21.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
 
 ## Resultado principal
 
@@ -33,6 +33,8 @@ Una ablación controlada puntúa ambas variantes sobre **exactamente las mismas 
 En los diagnósticos PIT rolling-origin ponderados por ventanas, MM-BCD queda más cerca de la dispersión ideal (`0.964` frente a `1.000`), pero no obtiene el mejor índice de fiabilidad (`0.484`, frente a `0.463` del Student-t). Ajustar la escala no equivale a ajustar la distribución completa, y las reglas de scoring propias evalúan ambas dimensiones.
 
 > **Correcciones metodológicas acumuladas.** En v0.6.0, los grados de libertad del Student-t eran una constante no estimada (`6.0`); estimarlos por verosimilitud en cada origen invalidó tres conclusiones de v0.5.0. En v0.7.0 se añade DCC-GARCH como cuarto control y MM queda fuera del conjunto de confianza en las tres reglas. En v0.8.0 la solución de MM pasa a publicarse como mezcla de los starts elegibles, porque la elección del mejor start introducía una variación del mismo orden que los efectos contrastados. En v0.9.0 todos los generadores se recalibran en cada fecha de rebalanceo, de modo que H4 por fin se contrasta bajo un protocolo simétrico: **ninguna de las diecisiete estrategias supera al Equal Weight tras corregir por multiplicidad**. En v0.10.0 una ablación controlada descarta que el cambio de ranking entre diseños se deba a la recalibración; el detalle está en [research/RESULTS_20260825.md](research/RESULTS_20260825.md).
+
+Un experimento posterior afila esa lectura. Recalibrando MM-BCD con el término de dependencia ponderado hasta cuatrocientas veces más fuerte, el ajuste de covarianza en muestra mejora **treinta y nueve veces** — y fuera de muestra el CRPS empeora un 1.46% y el Energy Score un 2.34%, ambos significativos tras Holm con intervalos que excluyen el cero. La covarianza objetivo es una estimación, no un hecho: ajustarla más fino equivale a ajustar su error de estimación. La ponderación publicada no es una limitación sino regularización.
 
 ![Estabilidad temporal de CRPS](research/assets/rolling-origin-crps.png)
 
