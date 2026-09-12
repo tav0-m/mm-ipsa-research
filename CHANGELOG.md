@@ -2,6 +2,65 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.19.0] - 2026-09-11
+
+Diagnostico de por que se degrada la dependencia al ampliar el universo. La
+version anterior midio la degradacion; esta busca su causa, y descarta las tres
+explicaciones candidatas.
+
+### Anadido
+
+- `analysis/scalability.py`, que separa capacidad, presupuesto de iteraciones y
+  criterio de parada como explicaciones alternativas. Se miden por separado
+  porque llevan a remedios opuestos.
+- 5 pruebas nuevas.
+
+### Resultado: ninguna de las tres explicaciones se sostiene
+
+El argumento de conteo ya descartaba la capacidad antes de medir nada: con
+quinientos escenarios en veintinueve dimensiones hay unos quince mil parametros
+libres para quinientos veintidos objetivos, de modo que la representacion no
+puede ser el limite. La medicion lo confirma por la via mas incomoda.
+
+| Configuracion | Objetivo | Error de covarianza | Segundos |
+|---|---:|---:|---:|
+| Publicada, N=500 | 1,77e-10 | 2,41e-03 | 37 |
+| Mas iteraciones, 600 | 1,77e-10 | **2,41e-03** | 49 |
+| Mas escenarios, N=2000 | 5,39e-10 | **4,91e-03** | 136 |
+| Tolerancia 1e-8 | — | — | 1332 |
+
+**Mas iteraciones no cambian nada**, hasta el ultimo digito. El solver no agota
+presupuesto: se detiene por `tol_patience_3` tras seis o siete iteraciones tanto
+con quince activos como con veintinueve, de modo que declara convergencia en vez
+de quedarse sin margen.
+
+**Mas escenarios empeoran el ajuste.** Cuadruplicar el soporte duplica el error
+de covarianza y cuesta tres veces y media mas tiempo. Es lo contrario de lo que
+predice la intuicion de capacidad, y cierra esa explicacion.
+
+**Forzar la convergencia falla.** Con tolerancia de 1e-8 el solver corre
+veintidos minutos y ningun start alcanza los umbrales de estacionariedad que si
+alcanza con quince activos. El `strict_solver` del proyecto se niega a publicar
+esa solucion, que es su proposito.
+
+### Lectura
+
+La degradacion no es de configuracion sino del esquema de descenso por bloques
+sobre este objetivo. Al crecer la dimension, el termino de dependencia crece como
+el cuadrado mientras los marginales crecen de forma lineal, y la iteracion se
+estanca en un entorno peor sin que ninguno de los tres controles disponibles lo
+corrija.
+
+Coincide con lo que el proyecto venia midiendo desde la version 0.7.0: la
+debilidad de MM-BCD estuvo siempre en dependencia -Energy Score, Variogram Score,
+atribucion de cola- y ampliar el universo la agrava por una via estructural y no
+por falta de ajuste fino.
+
+La hipotesis de trabajo con la que se abrio este diagnostico era que el cuello de
+botella estaba en el criterio de parada y que optimizar mas lo corregiria. Los
+datos la refutan en su segunda mitad: el criterio si corta pronto, y forzarlo a
+seguir no mejora el ajuste sino que impide converger.
+
 ## [0.18.0] - 2026-09-11
 
 Ampliacion exploratoria del universo y medicion de como escala MM-BCD. El sello

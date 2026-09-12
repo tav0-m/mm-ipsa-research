@@ -10,7 +10,7 @@ La pregunta no es si MM-BCD reproduce media, covarianza y momentos superiores �
 
 El proyecto contesta esa pregunta por dos vías. La **predictiva** evalúa toda la distribución con reglas de scoring propias. La de **riesgo** evalúa únicamente la cola, que es donde una función de riesgo toma decisiones y donde un buen score promedio puede esconder un mal comportamiento.
 
-**Versión pública actual:** `v0.18.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
+**Versión pública actual:** `v0.19.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
 
 ## Resultado principal
 
@@ -109,7 +109,7 @@ flowchart LR
 - Auditoría de integridad estructural de precios: calendario, detección de eventos
   corporativos mal ajustados por persistencia de nivel, y precios estancados.
 - Sensibilidad separada de liquidez seleccionada exclusivamente con métricas in-sample.
-- 333 pruebas automatizadas, Ruff y Pyright sin errores, y nueve etapas de linaje verificadas.
+- 338 pruebas automatizadas, Ruff y Pyright sin errores, y nueve etapas de linaje verificadas.
 
 El test confirmatorio está **congelado**: la especificación se selló el 2026-08-26 y la evaluación comienza el 2026-09-01, con `mm-ipsa verify` comprobando por hash que nada cambió. El contraste primario registrado es CRPS de MM contra DCC-GARCH, y se exigen al menos 40 ventanas antes de admitir cualquier lectura. El protocolo completo está en [research/PROTOCOL.md](research/PROTOCOL.md) y los cortes rolling-origin están congelados en [research/rolling_origin.yaml](research/rolling_origin.yaml).
 
