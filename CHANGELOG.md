@@ -2,6 +2,27 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.17.1] - 2026-09-11
+
+Consolidacion de resultados. Ningun calculo cambia.
+
+### Anadido
+
+- `research/RESULTS_20260911.md`. Los cinco diagnosticos de riesgo vivian solo
+  en entradas del changelog, dispersos entre cinco versiones. El informe los
+  reune con la convencion del proyecto y explicita en cada uno que sobrevive a
+  la correccion por multiplicidad y que no.
+- Seccion de comportamiento en la cola en el README, que mostraba como resultado
+  principal unicamente la tabla de scoring de la version 0.10.0.
+
+### Cambiado
+
+- La descripcion del proyecto declara ahora las dos vias de evaluacion. La
+  predictiva juzga toda la distribucion; la de riesgo juzga la cola, donde un
+  buen score promedio puede esconder un mal comportamiento.
+- `RESULTS_20260825.md` pasa a citarse como resultados predictivos y no como
+  resultados actuales sin mas, porque ya no es el unico informe vigente.
+
 ## [0.17.0] - 2026-09-11
 
 Cierre del bloque de risk management: la calibracion estresada, que es la

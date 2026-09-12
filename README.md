@@ -8,7 +8,9 @@ Plataforma de investigación cuantitativa independiente para estudiar generació
 
 La pregunta no es si MM-BCD reproduce media, covarianza y momentos superiores —lo hace con alta precisión—, sino si esa calibración mejora pronósticos probabilísticos y decisiones económicas fuera de muestra frente a controles Gaussian, Student-t, histórico EWMA y DCC-GARCH.
 
-**Versión pública actual:** `v0.17.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
+El proyecto contesta esa pregunta por dos vías. La **predictiva** evalúa toda la distribución con reglas de scoring propias. La de **riesgo** evalúa únicamente la cola, que es donde una función de riesgo toma decisiones y donde un buen score promedio puede esconder un mal comportamiento.
+
+**Versión pública actual:** `v0.17.1` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
 
 ## Resultado principal
 
@@ -35,6 +37,38 @@ En los diagnósticos PIT rolling-origin ponderados por ventanas, MM-BCD queda m�
 ![Estabilidad temporal de CRPS](research/assets/rolling-origin-crps.png)
 
 ![Diferencias pareadas de scores](research/assets/paired-score-differences.png)
+
+## Comportamiento en la cola
+
+Las reglas de scoring promedian sobre toda la distribución, de modo que un modelo puede obtener buen score y describir mal el cinco por ciento peor. Cinco diagnósticos independientes atacan ese punto sobre 121 ventanas disjuntas.
+
+**Severidad de cola por cartera** — cuánto peores fueron las pérdidas realizadas frente al Expected Shortfall predicho:
+
+| Modelo | MaxSharpe | MinVariance | MinCVaR |
+|---|---:|---:|---:|
+| DCC-GARCH | **0.979** | 0.996 | 1.038 |
+| Student-t | 1.016 | 1.123 | 1.181 |
+| Gaussiano | 1.035 | 1.153 | 1.187 |
+| Histórico EWMA | 1.101 | 1.261 | 1.255 |
+| MM-BCD | 1.123 | 1.188 | **1.309** |
+
+**Prociclicidad** — el periodo de evaluación contiene un cambio de régimen al alza, de 11.1% de volatilidad anualizada en 2024-H2 a 20.6% en 2026-H1. Los excesos se concentran en el régimen tensionado en las quince combinaciones de modelo y cartera, sin excepción:
+
+| Modelo | Excesos en calma | Excesos en tensión |
+|---|---:|---:|
+| DCC-GARCH | 1.2 – 2.5% | **14.8%** |
+| Histórico EWMA | 1.2 – 3.7% | 18.5 – 22.2% |
+| Gaussiano / Student-t | 2.5 – 7.4% | 22.2 – 25.9% |
+| MM-BCD | 4.9 – 8.6% | 22.2 – **29.6%** |
+
+**Coste de la corrección** — calibrar sobre el tramo tensionado de la muestra elimina los excesos en los dos regímenes y en los cinco modelos, cobrando entre **2.15 y 2.91 veces el capital**. MM-BCD exige el máximo y DCC-GARCH el mínimo.
+
+Los cinco diagnósticos convergen. **DCC-GARCH describe la cola mejor que los cuatro generadores estáticos** porque arrastra estado condicional: su límite reacciona al régimen en vez de describir el promedio del periodo de estimación. **MM-BCD queda en el extremo opuesto**, y eso no contradice el resultado predictivo sino que lo explica — ajustar los cuatro primeros momentos no impone ninguna restricción sobre la cola más allá del cuantil del cinco por ciento.
+
+Dos hallazgos transversales. **La optimización amplifica el error del modelo**: MinCVaR, la cartera diseñada para controlar riesgo de cola, es la peor calibrada en cuatro de cinco modelos, porque elige pesos sobre los activos cuyo riesgo de cola el modelo subestima. Y **ningún modelo informa la composición de la cola**: la correlación media entre atribución predicha y realizada es +0.22, de modo que saber cuánto se pierde no implica saber qué lo produce.
+
+De los cinco diagnósticos sólo uno alcanza significancia tras corregir por multiplicidad —la severidad de MM-BCD con MinCVaR, con valor p ajustado de 0.0037—. Los demás muestran dirección consistente con evidencia insuficiente, y el de prociclicidad descansa además en un solo episodio de tensión. El detalle está en [research/RESULTS_20260911.md](research/RESULTS_20260911.md).
+
 
 ## Diseño de investigación
 
@@ -146,7 +180,8 @@ Un test verde prueba contratos de software y trazabilidad; no prueba rentabilida
 
 - [Informe de investigación en PDF](research/build/MM_Research_Report.pdf)
 - [Fuente LaTeX del informe](research/MM_Research_Report.tex)
-- [Resultados actuales](research/RESULTS_20260825.md)
+- [Resultados de riesgo, actuales](research/RESULTS_20260911.md)
+- [Resultados predictivos, actuales](research/RESULTS_20260825.md)
 - [Resultados de v0.7.0, superados](research/RESULTS_20260814.md)
 - [Resultados de v0.6.0, superados](research/RESULTS_20260813.md)
 - [Resultados de v0.5.0, superados](research/RESULTS_20260810.md)
