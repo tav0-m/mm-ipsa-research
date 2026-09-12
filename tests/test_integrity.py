@@ -95,11 +95,45 @@ class TestCorporateActionDetection(unittest.TestCase):
     def test_detection_survives_a_wide_range_of_market_moves(self):
         detected = 0
         for seed in range(30):
-            prices = _random_walk(seed=100 + seed)
+            prices = _random_walk(assets=8, seed=100 + seed)
             prices.iloc[200:, 0] /= 2.0
             found = corporate_action_candidates(prices)
             detected += int(found["suspected"].sum())
         self.assertEqual(detected, 30)
+
+    def test_a_market_wide_fall_is_not_mistaken_for_a_split(self):
+        # Una caida que alcanza a todo el panel y no rebota persiste como
+        # desplazamiento de nivel igual que un ajuste fallido. Solo descontar el
+        # movimiento comun las separa.
+        prices = _random_walk(assets=8, seed=200)
+        prices.iloc[250:] *= 0.66
+
+        with_market = corporate_action_candidates(prices, remove_market=False)
+        without_market = corporate_action_candidates(prices, remove_market=True)
+
+        self.assertGreater(int(with_market["suspected"].sum()), 0)
+        self.assertEqual(int(without_market["suspected"].sum()), 0)
+
+    def test_an_idiosyncratic_split_survives_the_market_adjustment(self):
+        prices = _random_walk(assets=8, seed=201)
+        prices.iloc[250:, 3] /= 2.0
+
+        found = corporate_action_candidates(prices, remove_market=True)
+        suspected = found.loc[found["suspected"]]
+
+        self.assertEqual(len(suspected), 1)
+        self.assertEqual(suspected.iloc[0]["asset"], "A3")
+
+    def test_a_narrow_panel_skips_the_market_adjustment(self):
+        # Con menos de MINIMUM_CROSS_SECTION columnas la mediana no describe a
+        # ningun mercado, de modo que el descuento no debe aplicarse.
+        prices = _random_walk(assets=3, seed=202)
+        prices.iloc[200:, 0] /= 2.0
+
+        adjusted = corporate_action_candidates(prices, remove_market=True)
+        raw = corporate_action_candidates(prices, remove_market=False)
+
+        self.assertTrue(adjusted.equals(raw))
 
     def test_rejects_non_positive_prices(self):
         prices = _random_walk(seed=7)

@@ -65,6 +65,12 @@ SPLIT_RATIOS = (
 
 MAD_TO_SIGMA = 1.4826
 
+# Ancho minimo del panel para que la mediana transversal describa al mercado. Por
+# debajo, la mediana es practicamente una sola observacion y el propio salto que
+# se investiga la arrastra: con tres activos la deteccion de un split inyectado
+# cae de treinta sobre treinta a veintisiete.
+MINIMUM_CROSS_SECTION = 5
+
 
 def _as_date(value: object) -> str:
     """Fecha del indice en formato ISO, sin depender del tipo declarado."""
@@ -141,11 +147,26 @@ CANDIDATE_COLUMNS = {
     "asset": "object",
     "date": "object",
     "ratio": "float64",
+    "idiosyncratic_ratio": "float64",
     "nearest_split_ratio": "float64",
     "distance_in_scales": "float64",
     "level_persistence": "float64",
     "suspected": "bool",
 }
+
+
+def _market_log_returns(prices: pd.DataFrame) -> pd.Series:
+    """Movimiento comun del panel, como mediana transversal por fecha.
+
+    La mediana y no la media porque el propio salto que se investiga no debe
+    arrastrar la referencia contra la que se le compara.
+    """
+    values = prices.to_numpy(dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        log_returns = np.diff(np.log(values), axis=0)
+    return pd.Series(
+        np.nanmedian(log_returns, axis=1), index=prices.index[1:], name="market"
+    )
 
 
 def corporate_action_candidates(
@@ -154,6 +175,7 @@ def corporate_action_candidates(
     scale_tolerance: float = 3.0,
     persistence_window: int = 10,
     minimum_persistence: float = 0.8,
+    remove_market: bool = True,
 ) -> pd.DataFrame:
     """Saltos compatibles con un split no ajustado por el proveedor.
 
@@ -174,6 +196,14 @@ def corporate_action_candidates(
 
     El coste de ensanchar la banda es bajo porque el filtro de persistencia, y
     no la banda, es lo que separa un ajuste fallido de un movimiento de mercado.
+
+    ``remove_market`` descuenta el movimiento comun del panel antes de buscar la
+    razon. Un split altera una sola serie; un desplome altera todas. Sin ese
+    descuento una caida de mercado que no rebota queda marcada como evento
+    corporativo, porque persiste como desplazamiento de nivel igual que un ajuste
+    fallido. El descuento solo se aplica si el panel alcanza
+    ``MINIMUM_CROSS_SECTION`` columnas; con menos, la mediana no describe a
+    ningun mercado y degradaria la deteccion en vez de afinarla.
     """
     if persistence_window < 2:
         raise ValueError("persistence_window debe ser al menos dos")
@@ -181,6 +211,11 @@ def corporate_action_candidates(
         raise ValueError("scale_tolerance debe ser positivo")
 
     log_split_ratios = np.log(SPLIT_RATIOS)
+    market = (
+        _market_log_returns(prices)
+        if remove_market and prices.shape[1] >= MINIMUM_CROSS_SECTION
+        else None
+    )
     records: list[dict[str, object]] = []
     for asset in prices.columns:
         series = prices[asset].dropna()
@@ -196,7 +231,13 @@ def corporate_action_candidates(
         if not np.isfinite(scale) or scale <= 0.0:
             continue
 
-        for offset, log_ratio in enumerate(log_returns):
+        if market is None:
+            idiosyncratic = log_returns
+        else:
+            aligned = market.reindex(series.index[1:]).to_numpy()
+            idiosyncratic = log_returns - np.nan_to_num(aligned)
+
+        for offset, log_ratio in enumerate(idiosyncratic):
             distances = np.abs(log_ratio - log_split_ratios) / scale
             best = int(np.argmin(distances))
             if distances[best] > scale_tolerance:
@@ -209,7 +250,8 @@ def corporate_action_candidates(
                 {
                     "asset": asset,
                     "date": _as_date(series.index[position]),
-                    "ratio": float(np.exp(log_ratio)),
+                    "ratio": float(np.exp(log_returns[offset])),
+                    "idiosyncratic_ratio": float(np.exp(log_ratio)),
                     "nearest_split_ratio": float(SPLIT_RATIOS[best]),
                     "distance_in_scales": float(distances[best]),
                     "level_persistence": persistence,

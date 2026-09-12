@@ -2,6 +2,74 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.18.0] - 2026-09-11
+
+Ampliacion exploratoria del universo y medicion de como escala MM-BCD. El sello
+prohibe modificar el universo de activos, de modo que la ampliacion vive en una
+configuracion aparte y `config.yaml` no se toca: la especificacion sellada sigue
+intacta y el test confirmatorio no se ve afectado.
+
+### Anadido
+
+- `config_extended.yaml` con veintinueve activos. Los catorce anadidos se
+  seleccionaron con criterios fijados antes de mirar resultados y derivados del
+  propio universo incumbente, no elegidos para que convengan: integridad sin
+  hallazgos bloqueantes, jornadas sin variacion por debajo del 4,99% del peor
+  incumbente, y racha maxima por debajo de sus seis jornadas.
+- Descuento del movimiento comun en la deteccion de eventos corporativos. Un
+  split altera una sola serie y un desplome altera todas, pero ambos persisten
+  como desplazamiento de nivel, de modo que el filtro anterior no los separaba.
+- 3 pruebas nuevas.
+
+### Corregido
+
+- La caida de VAPORES del 18 de marzo de 2020, del 32,7%, quedaba marcada como
+  posible evento corporativo. Era un falso positivo: el mercado completo cayo
+  14,1% esa jornada, CAP cayo 27,5% dentro del universo ya admitido, y el precio
+  siguio evolucionando despues. El descuento transversal la limpia y conserva
+  los seis eventos de LTM, que si son idiosincraticos.
+- El descuento se aplica solo con al menos cinco columnas. Con tres, la mediana
+  transversal es practicamente una observacion y el propio salto la arrastra: la
+  deteccion de un split inyectado cae de treinta sobre treinta a veintisiete.
+
+### Seleccion
+
+De veintidos candidatos con cobertura completa quedaron catorce. Siete se
+rechazaron por iliquidez y el corte resulto natural: el peor admitido registra
+3,80% de jornadas sin variacion y el menos malo de los rechazados 6,61%, tras lo
+cual el grupo salta al rango de 25 a 41%. ANDINA-A alcanza 40,8% y HITES encadena
+veintiocho jornadas sin moverse. LTM se rechazo por integridad pese a superar el
+filtro de liquidez.
+
+### Resultado: el metodo escala, la dependencia no
+
+Con los mismos quinientos escenarios, pasar de quince a veintinueve activos
+multiplica los targets por 3,16 y el tiempo por 3,71.
+
+| Panel | n | Covarianzas | Targets | F total | Segundos |
+|---|---:|---:|---:|---:|---:|
+| Actual | 15 | 105 | 165 | 9,22e-11 | 9,8 |
+| Extendido | 29 | 406 | 522 | 5,23e-10 | 36,3 |
+
+El error relativo maximo distingue dos comportamientos opuestos:
+
+| Panel | Media | Varianza | Tercer momento | Cuarto momento | Covarianza |
+|---|---:|---:|---:|---:|---:|
+| 15 activos | 7,8e-06 | 1,1e-06 | 7,6e-06 | 2,3e-07 | 4,6e-05 |
+| 29 activos | 1,2e-05 | 1,4e-06 | 4,1e-06 | 1,4e-07 | **2,4e-03** |
+
+**Los momentos marginales no se degradan**; alguno incluso mejora. **La
+covarianza se degrada cincuenta y dos veces.** La asimetria es estructural: los
+marginales son cuatro por activo y crecen de forma lineal, mientras las
+covarianzas crecen como el cuadrado, y el soporte de quinientos escenarios tiene
+capacidad fija para representar dependencia.
+
+El hallazgo no es aislado. La debilidad de MM-BCD medida en las versiones
+anteriores estaba siempre en dependencia -Energy y Variogram Score, atribucion de
+cola- y ampliar el universo la agrava en la direccion esperada. Un uso serio del
+universo ampliado exigiria elevar `N_scenarios`, y medir cuanto, es la pregunta
+natural siguiente.
+
 ## [0.17.1] - 2026-09-11
 
 Consolidacion de resultados. Ningun calculo cambia.
