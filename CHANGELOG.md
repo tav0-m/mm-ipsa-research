@@ -2,6 +2,43 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.23.0] - 2026-09-12
+
+Las dos conclusiones con significancia estadistica de la linea predictiva
+-versiones 0.21.0 y 0.22.0- se habian obtenido con scripts sueltos. Quedaban
+documentadas pero no reproducibles desde el repositorio, que es un defecto segun
+los estandares del propio proyecto: todo el resto tiene modulo, pruebas y
+comando.
+
+### Anadido
+
+- `analysis/objective_ablation.py`, que recalibra el generador con distintas
+  ponderaciones del objetivo, puntua cada version sobre las mismas ventanas
+  disjuntas fuera de muestra y contrasta cada variante contra la publicada con el
+  aparato inferencial del proyecto: bootstrap por bloques con ancho de
+  Politis-White y correccion de Holm.
+- Comando `mm-ipsa ablate`.
+- 15 pruebas nuevas.
+
+### Verificacion
+
+El modulo reproduce las cifras publicadas. Retirar los momentos superiores
+empeora las tres reglas con valores p de Holm de 0.0012; elevar el peso de
+dependencia empeora CRPS un 1.46% y Energy Score un 2.34%, ambos significativos.
+
+### Un mecanismo que el script suelto no mostraba
+
+Al tabular ajuste y desempeno en la misma salida aparece la contrapartida que
+explica el resultado de la version anterior. Elevar los momentos superiores
+degrada el ajuste de covarianza seis veces, de 4.63e-05 a 2.83e-04, porque el
+optimizador reasigna esfuerzo entre terminos que compiten por el mismo soporte
+de escenarios.
+
+Eso explica por que esa variante mejora Energy Score y empeora Variogram Score a
+la vez: la primera regla es mas sensible a los margenes y la segunda a la
+dependencia. Los pesos del objetivo no se eligen por separado; mueven un
+presupuesto comun.
+
 ## [0.22.0] - 2026-09-12
 
 Ablacion de los momentos superiores. La version anterior mostro que ajustar la

@@ -19,6 +19,7 @@ def _print_help() -> None:
         "  mm-ipsa assets [--rolling-dir PATH] [--destination PATH]\n"
         "  mm-ipsa audit-data [--prices PATH] [--output DIR]\n"
         "  mm-ipsa shortfall [--source DIR] [--output DIR]\n"
+        "  mm-ipsa ablate [--prices PATH] [--output DIR]\n"
         "  mm-ipsa freeze --start YYYY-MM-DD [--min-windows N]\n"
         "  mm-ipsa --version\n"
     )
@@ -221,6 +222,66 @@ def _shortfall(argv: Sequence[str]) -> int:
     return 0
 
 
+def _ablate(argv: Sequence[str]) -> int:
+    """Contrasta los terminos del objetivo contra el desempeno fuera de muestra."""
+    parser = argparse.ArgumentParser(
+        description="Ablacion de los pesos del objetivo, evaluada fuera de muestra"
+    )
+    parser.add_argument("--prices", default="outputs/adj_close_prices.csv")
+    parser.add_argument("--observations", default="outputs/terminal_returns_H5_OOS.csv")
+    parser.add_argument("--output", default="outputs/ablation")
+    args = parser.parse_args(argv)
+
+    import pandas as pd
+
+    from mm_ipsa.analysis.objective_ablation import run_objective_ablation
+    from mm_ipsa.config import load_config
+
+    for path in (Path(args.prices), Path(args.observations)):
+        if not path.is_file():
+            print(f"No existe {path}", file=sys.stderr)
+            return 1
+
+    report = run_objective_ablation(
+        load_config(),
+        pd.read_csv(args.prices, index_col=0, parse_dates=True),
+        pd.read_csv(args.observations, index_col=0, parse_dates=True),
+        args.output,
+    )
+
+    print(f"Ablacion del objetivo sobre {report['windows']} ventanas disjuntas")
+    print(
+        f"  {'variante':28s} {'err_cov':>9s} {'err_m3':>9s} "
+        f"{'CRPS':>9s} {'Energy':>9s} {'Variogram':>10s}"
+    )
+    for record in report["fit"].to_dict("records"):
+        print(
+            f"  {str(record['variant']):28s} "
+            f"{float(record['covariance_error']):9.2e} "
+            f"{float(record['third_moment_error']):9.2e} "
+            f"{float(record['mean_crps']):9.6f} "
+            f"{float(record['energy_score']):9.6f} "
+            f"{float(record['variogram_score']):10.6f}"
+        )
+
+    print()
+    print("  contraste contra la variante publicada, Holm por variante:")
+    for record in report["tests"].to_dict("records"):
+        verdict = (
+            "PEOR" if record["worse_than_reference"]
+            else "MEJOR" if record["better_than_reference"]
+            else "sin diferencia"
+        )
+        print(
+            f"    {str(record['variant']):28s} {str(record['rule']):16s} "
+            f"{float(record['relative_pct']):+7.2f}% "
+            f"p={float(record['pvalue_holm']):.4f}  {verdict}"
+        )
+    print()
+    print(f"  informes en {Path(args.output)}")
+    return 0
+
+
 def _freeze(argv: Sequence[str]) -> int:
     """Sella la especificacion vigente y fija el inicio del test confirmatorio."""
     parser = argparse.ArgumentParser(
@@ -292,6 +353,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _audit_data(command_arguments)
     if command == "shortfall":
         return _shortfall(command_arguments)
+    if command == "ablate":
+        return _ablate(command_arguments)
     print(f"Comando desconocido: {command}", file=sys.stderr)
     _print_help()
     return 2
