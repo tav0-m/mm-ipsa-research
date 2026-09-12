@@ -2,6 +2,55 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.24.0] - 2026-09-12
+
+Validacion rolling-origin de las ablaciones del objetivo. El informe anterior la
+declaraba pendiente y la senalaba como el paso que convertiria estos contrastes
+en evidencia de primer orden.
+
+### Anadido
+
+- `run_rolling_objective_ablation`, que recalibra cada variante al inicio de cada
+  fold con datos exclusivamente anteriores y acumula ciento sesenta y nueve
+  ventanas en lugar de ciento veintiuna.
+- Remuestreo agrupado que nunca cruza fronteras entre folds. Un bloque que
+  saltara de uno al siguiente uniria observaciones separadas por un reajuste
+  completo del modelo, que es la discontinuidad que el diseno introduce a
+  proposito.
+- Opcion `mm-ipsa ablate --rolling` y 5 pruebas nuevas.
+
+### Resultado: los nueve contrastes empeoran
+
+| Variante | CRPS | Energy | Variogram |
+|---|---:|---:|---:|
+| Dependencia alta | +0.67% (0.0012) | +0.75% (0.0012) | +1.30% (0.0012) |
+| Sin momentos superiores | +0.52% (0.0112) | +0.24% (0.0280) | +1.56% (0.0012) |
+| Momentos superiores altos | +0.17% (0.0016) | +0.12% (0.0012) | +0.27% (0.0212) |
+
+**Ninguna desviacion de la configuracion publicada sobrevive**, en ninguna regla.
+
+El diseno endurece dos conclusiones del origen unico. Elevar el peso de
+dependencia mejoraba Variogram Score sin significancia; aqui lo empeora de forma
+significativa. Elevar los momentos superiores mejoraba Energy Score; aqui empeora
+las tres reglas. En ambos casos el origen unico daba una lectura mas favorable a
+la desviacion de la que resiste el protocolo completo.
+
+Las magnitudes caen: retirar los momentos superiores pasa de +2.04% a +0.52% en
+CRPS. El diseno de origen unico las sobreestimaba, de modo que las cifras de las
+versiones 0.21.0 y 0.22.0 son cotas superiores del efecto. La direccion se
+mantiene en los nueve casos.
+
+### Confirmaciones adicionales
+
+El ajuste en muestra varia entre folds mucho mas de lo que sugeria el origen
+unico: el error de covarianza de la variante publicada va de 1.7e-04 en el fold
+de 2025 a 6.7e-03 en el de 2026H1. Cada fold entrena con menos historia y ese es
+el costo del diseno.
+
+La competencia por un presupuesto comun, observada en la version 0.23.0, se
+confirma: retirar los momentos superiores mejora el ajuste de covarianza de
+1.1e-03 a 5.4e-04 en mediana sin tocar su peso.
+
 ## [0.23.1] - 2026-09-12
 
 Consolidacion de los resultados de diseno. Ningun calculo cambia.

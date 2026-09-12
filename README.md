@@ -10,7 +10,7 @@ La pregunta no es si MM-BCD reproduce media, covarianza y momentos superiores �
 
 El proyecto contesta esa pregunta por dos vías. La **predictiva** evalúa toda la distribución con reglas de scoring propias. La de **riesgo** evalúa únicamente la cola, que es donde una función de riesgo toma decisiones y donde un buen score promedio puede esconder un mal comportamiento.
 
-**Versión pública actual:** `v0.23.1` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
+**Versión pública actual:** `v0.24.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
 
 ## Resultado principal
 
@@ -36,7 +36,7 @@ En los diagnósticos PIT rolling-origin ponderados por ventanas, MM-BCD queda m�
 
 Un experimento posterior afila esa lectura. Recalibrando MM-BCD con el término de dependencia ponderado hasta cuatrocientas veces más fuerte, el ajuste de covarianza en muestra mejora **treinta y nueve veces** — y fuera de muestra el CRPS empeora un 1.46% y el Energy Score un 2.34%, ambos significativos tras Holm con intervalos que excluyen el cero. La covarianza objetivo es una estimación, no un hecho: ajustarla más fino equivale a ajustar su error de estimación. La ponderación publicada no es una limitación sino regularización.
 
-La ablación complementaria apunta al lado contrario y valida la premisa del método: retirar el tercer y cuarto momento del objetivo degrada **las tres reglas de forma significativa** —CRPS +2.04%, Energy +1.37%, Variogram +2.02%, todas con p de Holm de 0.0012—. Los momentos superiores se ganan su lugar; la covarianza no admite el mismo refinamiento. La diferencia está en la razón entre parámetros y datos: cuatro momentos por activo se estiman sobre la serie completa, ciento cinco covarianzas sobre la misma muestra. El detalle está en [research/RESULTS_20260912.md](research/RESULTS_20260912.md), y `mm-ipsa ablate` regenera ambos contrastes.
+La ablación complementaria apunta al lado contrario y valida la premisa del método: retirar el tercer y cuarto momento del objetivo degrada **las tres reglas de forma significativa** —CRPS +2.04%, Energy +1.37%, Variogram +2.02%, todas con p de Holm de 0.0012—. Los momentos superiores se ganan su lugar; la covarianza no admite el mismo refinamiento. La diferencia está en la razón entre parámetros y datos: cuatro momentos por activo se estiman sobre la serie completa, ciento cinco covarianzas sobre la misma muestra. Bajo validación rolling-origin con 169 ventanas el resultado se endurece: **ninguna de las desviaciones probadas supera a la configuración publicada en ninguna regla**, los nueve contrastes significativos. El detalle está en [research/RESULTS_20260912.md](research/RESULTS_20260912.md), y `mm-ipsa ablate --rolling` lo regenera.
 
 ![Estabilidad temporal de CRPS](research/assets/rolling-origin-crps.png)
 
@@ -113,7 +113,7 @@ flowchart LR
 - Auditoría de integridad estructural de precios: calendario, detección de eventos
   corporativos mal ajustados por persistencia de nivel, y precios estancados.
 - Sensibilidad separada de liquidez seleccionada exclusivamente con métricas in-sample.
-- 353 pruebas automatizadas, Ruff y Pyright sin errores, y nueve etapas de linaje verificadas.
+- 358 pruebas automatizadas, Ruff y Pyright sin errores, y nueve etapas de linaje verificadas.
 
 El test confirmatorio está **congelado**: la especificación se selló el 2026-08-26 y la evaluación comienza el 2026-09-01, con `mm-ipsa verify` comprobando por hash que nada cambió. El contraste primario registrado es CRPS de MM contra DCC-GARCH, y se exigen al menos 40 ventanas antes de admitir cualquier lectura. El protocolo completo está en [research/PROTOCOL.md](research/PROTOCOL.md) y los cortes rolling-origin están congelados en [research/rolling_origin.yaml](research/rolling_origin.yaml).
 

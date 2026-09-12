@@ -237,3 +237,158 @@ def run_objective_ablation(
     fit_table.to_csv(target / "objective_ablation_fit.csv", index=False)
     comparison.to_csv(target / "objective_ablation_tests.csv", index=False)
     return {"fit": fit_table, "tests": comparison, "windows": len(windows)}
+
+
+def _fold_groups(losses: dict[str, pd.DataFrame]) -> np.ndarray:
+    """Etiqueta de fold por observacion, tomada de cualquiera de las variantes.
+
+    Todas comparten el mismo calendario por construccion, de modo que cualquiera
+    sirve de referencia y la coincidencia se comprueba al ensamblarlas.
+    """
+    return next(iter(losses.values()))["fold_id"].to_numpy()
+
+
+def compare_across_folds(
+    losses: dict[str, pd.DataFrame],
+    reference: str,
+    *,
+    samples: int = 5000,
+    seed: int = 11,
+) -> pd.DataFrame:
+    """Contrasta variantes sobre folds, sin remuestrear a traves de sus fronteras.
+
+    Un bloque que cruzara de un fold al siguiente uniria observaciones separadas
+    por un reajuste completo del modelo, que es justamente la discontinuidad que
+    el diseno rolling-origin introduce a proposito.
+    """
+    from mm_ipsa.evaluation.comparison import (
+        grouped_moving_block_bootstrap_loss_difference,
+        holm_adjust,
+        resolve_block_size,
+    )
+
+    if reference not in losses:
+        raise ValueError(f"La referencia {reference} no esta entre las variantes")
+
+    groups = _fold_groups(losses)
+    baseline = losses[reference]
+    rows: list[dict[str, Any]] = []
+
+    for variant, frame in losses.items():
+        if variant == reference:
+            continue
+        if len(frame) != len(baseline):
+            raise ValueError(
+                f"{variant} tiene {len(frame)} ventanas y la referencia "
+                f"{len(baseline)}"
+            )
+        results = []
+        for rule in SCORING_RULES:
+            focal = frame[rule].to_numpy()
+            benchmark = baseline[rule].to_numpy()
+            with redirect_stdout(io.StringIO()):
+                block, _ = resolve_block_size(
+                    focal - benchmark, mode="auto", configured=5,
+                    max_block=20, groups=groups,
+                )
+                results.append(
+                    grouped_moving_block_bootstrap_loss_difference(
+                        focal, benchmark, groups, block_size=int(block),
+                        samples=samples, confidence_level=0.95, seed=seed,
+                    )
+                )
+        adjusted = holm_adjust([item["pvalue_raw"] for item in results])
+        for rule, item, pvalue in zip(SCORING_RULES, results, adjusted):
+            rows.append(
+                {
+                    "variant": variant,
+                    "rule": rule,
+                    "mean_difference": item["mean_difference"],
+                    "relative_pct": item["relative_difference_pct"],
+                    "ci_low": item["ci_low"],
+                    "ci_high": item["ci_high"],
+                    "pvalue_holm": float(pvalue),
+                    "worse_than_reference": bool(
+                        pvalue < 0.05 and item["mean_difference"] > 0.0
+                    ),
+                    "better_than_reference": bool(
+                        pvalue < 0.05 and item["mean_difference"] < 0.0
+                    ),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def run_rolling_objective_ablation(
+    main_cfg: dict[str, Any],
+    experiment_cfg: dict[str, Any],
+    daily: pd.DataFrame,
+    output: str | Path,
+    *,
+    variants: dict[str, dict[str, Any]] | None = None,
+    reference: str = "publicada",
+) -> AblationReport:
+    """Repite la ablacion recalibrando cada variante en cada origen.
+
+    La version de origen unico calibra una sola vez y puntua todo el periodo
+    posterior, de modo que un resultado favorable podria deberse a que esa unica
+    calibracion cayo bien. Aqui cada variante se recalibra al inicio de cada fold
+    con datos exclusivamente anteriores, que es el diseno bajo el que el proyecto
+    contrasta todo lo demas.
+    """
+    from mm_ipsa.analysis.rolling_origin import build_fold_samples
+    from mm_ipsa.config import target_parameters
+    from mm_ipsa.mm.targets import compute_targets
+
+    chosen = DEFAULT_VARIANTS if variants is None else variants
+    if reference not in chosen:
+        raise ValueError(f"La referencia {reference} no esta entre las variantes")
+
+    target = Path(output)
+    target.mkdir(parents=True, exist_ok=True)
+    horizon = int(main_cfg["data"]["H"])
+    validation = experiment_cfg["validation"]
+
+    fits: list[dict[str, Any]] = []
+    collected: dict[str, list[pd.DataFrame]] = {name: [] for name in chosen}
+
+    for fold in experiment_cfg["folds"]:
+        training_daily, training_terminal, evaluation = build_fold_samples(
+            daily, fold, horizon,
+            minimum_training_daily_rows=int(
+                validation["minimum_training_daily_rows"]
+            ),
+            minimum_evaluation_terminal_rows=int(
+                validation["minimum_evaluation_terminal_rows"]
+            ),
+        )
+        with redirect_stdout(io.StringIO()):
+            moments, covariance, _ = compute_targets(
+                training_terminal, training_daily,
+                **target_parameters(main_cfg["mm"]),
+            )
+        for variant, overrides in chosen.items():
+            fit, by_window = calibrate_and_score(
+                moments, covariance, evaluation, main_cfg, overrides
+            )
+            by_window = by_window.copy()
+            by_window["fold_id"] = str(fold["fold_id"])
+            collected[variant].append(by_window)
+            fits.append(
+                {"fold_id": str(fold["fold_id"]), "variant": variant, **fit}
+            )
+
+    losses = {
+        name: pd.concat(frames, ignore_index=True)
+        for name, frames in collected.items()
+    }
+    fit_table = pd.DataFrame(fits)
+    comparison = compare_across_folds(losses, reference)
+
+    fit_table.to_csv(target / "rolling_ablation_fit.csv", index=False)
+    comparison.to_csv(target / "rolling_ablation_tests.csv", index=False)
+    return {
+        "fit": fit_table,
+        "tests": comparison,
+        "windows": len(losses[reference]),
+    }

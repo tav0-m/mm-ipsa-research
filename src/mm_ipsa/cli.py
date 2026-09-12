@@ -230,11 +230,22 @@ def _ablate(argv: Sequence[str]) -> int:
     parser.add_argument("--prices", default="outputs/adj_close_prices.csv")
     parser.add_argument("--observations", default="outputs/terminal_returns_H5_OOS.csv")
     parser.add_argument("--output", default="outputs/ablation")
+    parser.add_argument(
+        "--rolling",
+        action="store_true",
+        help="recalibra cada variante en cada fold en vez de una sola vez",
+    )
+    parser.add_argument("--experiment", default="research/rolling_origin.yaml")
+    parser.add_argument("--daily", default="outputs/daily_returns.csv")
+    parser.add_argument("--daily-oos", default="outputs/daily_returns_OOS.csv")
     args = parser.parse_args(argv)
 
     import pandas as pd
 
-    from mm_ipsa.analysis.objective_ablation import run_objective_ablation
+    from mm_ipsa.analysis.objective_ablation import (
+        run_objective_ablation,
+        run_rolling_objective_ablation,
+    )
     from mm_ipsa.config import load_config
 
     for path in (Path(args.prices), Path(args.observations)):
@@ -242,19 +253,49 @@ def _ablate(argv: Sequence[str]) -> int:
             print(f"No existe {path}", file=sys.stderr)
             return 1
 
-    report = run_objective_ablation(
-        load_config(),
-        pd.read_csv(args.prices, index_col=0, parse_dates=True),
-        pd.read_csv(args.observations, index_col=0, parse_dates=True),
-        args.output,
-    )
+    configuration = load_config()
+    if args.rolling:
+        import yaml
 
-    print(f"Ablacion del objetivo sobre {report['windows']} ventanas disjuntas")
+        from mm_ipsa.analysis.recalibration_ablation import (
+            combine_daily_for_ablation,
+        )
+
+        experiment = yaml.safe_load(
+            Path(args.experiment).read_text(encoding="utf-8")
+        )
+        report = run_rolling_objective_ablation(
+            configuration,
+            experiment,
+            combine_daily_for_ablation(
+                pd.read_csv(args.daily, index_col=0, parse_dates=True),
+                pd.read_csv(args.daily_oos, index_col=0, parse_dates=True),
+                list(configuration["asset_labels"]),
+            ),
+            args.output,
+        )
+        design = f"{len(experiment['folds'])} folds, recalibrando en cada origen"
+    else:
+        report = run_objective_ablation(
+            configuration,
+            pd.read_csv(args.prices, index_col=0, parse_dates=True),
+            pd.read_csv(args.observations, index_col=0, parse_dates=True),
+            args.output,
+        )
+        design = "origen unico"
+
+    print(
+        f"Ablacion del objetivo sobre {report['windows']} ventanas disjuntas "
+        f"({design})"
+    )
     print(
         f"  {'variante':28s} {'err_cov':>9s} {'err_m3':>9s} "
         f"{'CRPS':>9s} {'Energy':>9s} {'Variogram':>10s}"
     )
-    for record in report["fit"].to_dict("records"):
+    fit = report["fit"]
+    if "fold_id" in fit.columns:
+        fit = fit.groupby("variant", as_index=False).mean(numeric_only=True)
+    for record in fit.to_dict("records"):
         print(
             f"  {str(record['variant']):28s} "
             f"{float(record['covariance_error']):9.2e} "

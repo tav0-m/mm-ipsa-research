@@ -120,5 +120,63 @@ class TestComparison(unittest.TestCase):
             compare_against_reference(self.losses, "inexistente", samples=300)
 
 
+
+def _fold_losses(scale: float, rows_per_fold: int, folds: int, seed: int):
+    rng = np.random.default_rng(seed)
+    frames = []
+    for index in range(folds):
+        frame = pd.DataFrame(
+            {
+                rule: np.abs(rng.standard_normal(rows_per_fold)) * scale
+                for rule in SCORING_RULES
+            }
+        )
+        frame["fold_id"] = f"F{index}"
+        frames.append(frame)
+    return pd.concat(frames, ignore_index=True)
+
+
+class TestFoldGroups(unittest.TestCase):
+    def test_reads_the_fold_label_from_any_variant(self):
+        from mm_ipsa.analysis.objective_ablation import _fold_groups
+
+        losses = {"a": _fold_losses(1.0, 20, 3, seed=5)}
+        groups = _fold_groups(losses)
+        self.assertEqual(len(groups), 60)
+        self.assertEqual(sorted(set(groups)), ["F0", "F1", "F2"])
+
+
+class TestComparisonAcrossFolds(unittest.TestCase):
+    def setUp(self):
+        from mm_ipsa.analysis.objective_ablation import compare_across_folds
+
+        self.compare = compare_across_folds
+        base = _fold_losses(1.0, 40, 4, seed=6)
+        worse = base.copy()
+        for rule in SCORING_RULES:
+            worse[rule] = worse[rule] + 0.6
+        self.losses = {"publicada": base, "peor": worse}
+
+    def test_produces_one_row_per_variant_and_rule(self):
+        table = self.compare(self.losses, "publicada", samples=400)
+        self.assertEqual(len(table), len(SCORING_RULES))
+        self.assertEqual(set(table["variant"]), {"peor"})
+
+    def test_flags_a_uniformly_worse_variant(self):
+        table = self.compare(self.losses, "publicada", samples=1000)
+        self.assertTrue(table["worse_than_reference"].all())
+
+    def test_rejects_variants_with_a_different_window_count(self):
+        truncated = {
+            "publicada": self.losses["publicada"],
+            "corta": self.losses["peor"].iloc[:-10],
+        }
+        with self.assertRaises(ValueError):
+            self.compare(truncated, "publicada", samples=300)
+
+    def test_rejects_a_reference_that_is_not_present(self):
+        with self.assertRaises(ValueError):
+            self.compare(self.losses, "inexistente", samples=300)
+
 if __name__ == "__main__":
     unittest.main()
