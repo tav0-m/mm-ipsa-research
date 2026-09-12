@@ -2,6 +2,32 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.23.1] - 2026-09-12
+
+Consolidacion de los resultados de diseno. Ningun calculo cambia.
+
+### Anadido
+
+- `research/RESULTS_20260912.md`. Las dos ablaciones del objetivo vivian solo en
+  entradas del changelog y en dos parrafos del README, pese a ser -junto con la
+  severidad de cola de MM-BCD con MinCVaR- los unicos contrastes del proyecto que
+  alcanzan significancia tras corregir por multiplicidad.
+
+El informe reune ambas, explicita la asimetria entre ellas y anade la lectura
+que solo aparece al tabular ajuste y desempeno juntos: los terminos del objetivo
+compiten por un presupuesto comun, de modo que elevar los momentos superiores
+degrada el ajuste de covarianza seis veces sin tocar su peso.
+
+Declara ademas el limite que ninguna de las dos entradas anteriores mencionaba:
+los contrastes se ejecutan sobre un unico origen de calibracion y ciento
+veintiuna ventanas, de modo que una validacion rolling-origin de cada variante
+sigue pendiente.
+
+### Cambiado
+
+- El README enlaza los tres informes vigentes por la pregunta que contesta cada
+  uno: desempeno comparado, comportamiento en la cola y diseno del objetivo.
+
 ## [0.23.0] - 2026-09-12
 
 Las dos conclusiones con significancia estadistica de la linea predictiva

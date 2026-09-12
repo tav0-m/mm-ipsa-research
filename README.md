@@ -10,7 +10,7 @@ La pregunta no es si MM-BCD reproduce media, covarianza y momentos superiores �
 
 El proyecto contesta esa pregunta por dos vías. La **predictiva** evalúa toda la distribución con reglas de scoring propias. La de **riesgo** evalúa únicamente la cola, que es donde una función de riesgo toma decisiones y donde un buen score promedio puede esconder un mal comportamiento.
 
-**Versión pública actual:** `v0.23.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
+**Versión pública actual:** `v0.23.1` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
 
 ## Resultado principal
 
@@ -36,7 +36,7 @@ En los diagnósticos PIT rolling-origin ponderados por ventanas, MM-BCD queda m�
 
 Un experimento posterior afila esa lectura. Recalibrando MM-BCD con el término de dependencia ponderado hasta cuatrocientas veces más fuerte, el ajuste de covarianza en muestra mejora **treinta y nueve veces** — y fuera de muestra el CRPS empeora un 1.46% y el Energy Score un 2.34%, ambos significativos tras Holm con intervalos que excluyen el cero. La covarianza objetivo es una estimación, no un hecho: ajustarla más fino equivale a ajustar su error de estimación. La ponderación publicada no es una limitación sino regularización.
 
-La ablación complementaria apunta al lado contrario y valida la premisa del método: retirar el tercer y cuarto momento del objetivo degrada **las tres reglas de forma significativa** —CRPS +2.04%, Energy +1.37%, Variogram +2.02%, todas con p de Holm de 0.0012—. Los momentos superiores se ganan su lugar; la covarianza no admite el mismo refinamiento. La diferencia está en la razón entre parámetros y datos: cuatro momentos por activo se estiman sobre la serie completa, ciento cinco covarianzas sobre la misma muestra.
+La ablación complementaria apunta al lado contrario y valida la premisa del método: retirar el tercer y cuarto momento del objetivo degrada **las tres reglas de forma significativa** —CRPS +2.04%, Energy +1.37%, Variogram +2.02%, todas con p de Holm de 0.0012—. Los momentos superiores se ganan su lugar; la covarianza no admite el mismo refinamiento. La diferencia está en la razón entre parámetros y datos: cuatro momentos por activo se estiman sobre la serie completa, ciento cinco covarianzas sobre la misma muestra. El detalle está en [research/RESULTS_20260912.md](research/RESULTS_20260912.md), y `mm-ipsa ablate` regenera ambos contrastes.
 
 ![Estabilidad temporal de CRPS](research/assets/rolling-origin-crps.png)
 
@@ -184,6 +184,7 @@ Un test verde prueba contratos de software y trazabilidad; no prueba rentabilida
 
 - [Informe de investigación en PDF](research/build/MM_Research_Report.pdf)
 - [Fuente LaTeX del informe](research/MM_Research_Report.tex)
+- [Resultados de diseño, actuales](research/RESULTS_20260912.md)
 - [Resultados de riesgo, actuales](research/RESULTS_20260911.md)
 - [Resultados predictivos, actuales](research/RESULTS_20260825.md)
 - [Resultados de v0.7.0, superados](research/RESULTS_20260814.md)
