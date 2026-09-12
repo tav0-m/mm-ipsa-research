@@ -10,7 +10,7 @@ La pregunta no es si MM-BCD reproduce media, covarianza y momentos superiores �
 
 El proyecto contesta esa pregunta por dos vías. La **predictiva** evalúa toda la distribución con reglas de scoring propias. La de **riesgo** evalúa únicamente la cola, que es donde una función de riesgo toma decisiones y donde un buen score promedio puede esconder un mal comportamiento.
 
-**Versión pública actual:** `v0.19.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
+**Versión pública actual:** `v0.20.0` · **Estado:** validación de desarrollo · **No es asesoría de inversión.**
 
 ## Resultado principal
 

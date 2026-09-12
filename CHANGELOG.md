@@ -2,6 +2,60 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.20.0] - 2026-09-11
+
+Correccion de la version anterior. El diagnostico de 0.19.0 concluyo que la
+degradacion de dependencia al ampliar el universo era del esquema de descenso
+por bloques y no de su configuracion. Esa conclusion es incorrecta.
+
+### El error
+
+La busqueda anterior recorrio tres controles -numero de escenarios, presupuesto
+de iteraciones y tolerancia de parada- y al no encontrar remedio en ninguno
+declaro que la causa no era de configuracion. Los tres son controles del solver.
+El peso del propio objetivo no se probo, y ahi estaba la causa.
+
+`cov_weight` vale 0.05 frente a pesos de 2.0 y 1.5 en los momentos marginales, de
+modo que el termino de dependencia pesa unas cuarenta veces menos. El solver no
+fallaba: hacia exactamente lo que el objetivo le pedia.
+
+### La medicion
+
+| Panel | cov_weight | Error de covarianza | Error de media |
+|---|---:|---:|---:|
+| 15 activos | 0.05 | 4.63e-05 | 7.79e-06 |
+| 15 activos | 20.0 | 1.18e-06 | 3.28e-05 |
+| 29 activos | 0.05 | 2.41e-03 | 1.21e-05 |
+| 29 activos | 20.0 | **4.69e-06** | 8.19e-05 |
+
+Con el peso elevado, el panel de veintinueve activos ajusta las covarianzas a
+4.69e-06, un orden de magnitud mejor que el de quince bajo el peso publicado. El
+metodo escala; lo que no transfiere es una ponderacion calibrada para quince
+activos.
+
+El coste existe y es modesto: el error de la media sube de 1.21e-05 a 8.19e-05,
+que en terminos absolutos sigue siendo despreciable.
+
+### Lo que tambien se descarto
+
+La primera idea para atacar el problema era sustituir el ajuste de las
+cuatrocientas seis covarianzas por una factorizacion de rango bajo. La medicion
+del espectro la descarto antes de construirla: el primer factor explica el 39.6%
+de la varianza con veintinueve activos y ocho factores solo alcanzan el 73.0%.
+Recuperar el noventa por ciento exigiria del orden de doce a quince factores, es
+decir entre trescientos cuarenta y ocho y cuatrocientos treinta y cinco
+objetivos frente a los cuatrocientos seis actuales. No hay reduccion, y la
+aproximacion cambiaria un problema dificil por uno mal especificado.
+
+### Sobre el sello
+
+La configuracion sellada mantiene `cov_weight` en 0.05 y no se toca. El hallazgo
+indica que esa ponderacion es subóptima para el ajuste de dependencia incluso
+con quince activos -donde elevarla mejora el error cuarenta veces- pero
+modificarla invalidaria el preregistro. Queda documentada para el ciclo
+posterior al test confirmatorio, que es exactamente el comportamiento que el
+sello existe para imponer.
+
 ## [0.19.0] - 2026-09-11
 
 Diagnostico de por que se degrada la dependencia al ampliar el universo. La
