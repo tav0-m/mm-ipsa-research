@@ -2,6 +2,61 @@
 
 Todos los cambios relevantes de este proyecto se documentarán en este archivo.
 
+## [0.22.0] - 2026-09-12
+
+Ablacion de los momentos superiores. La version anterior mostro que ajustar la
+covarianza mas fino perjudica; esta pregunta lo mismo del tercer y cuarto
+momento, que son la premisa del metodo y nunca se habian contrastado.
+
+### El experimento
+
+Se recalibra MM-BCD sobre el universo sellado con cuatro combinaciones de peso
+para asimetria y curtosis, y se puntua cada version contra las mismas ciento
+veintiuna ventanas disjuntas fuera de muestra.
+
+| Variante | Error tercer momento | Error cuarto | CRPS | Energy | Variogram |
+|---|---:|---:|---:|---:|---:|
+| Publicado 0.5 / 0.3 | 7.61e-06 | 2.25e-07 | 0.021042 | 0.101355 | 0.650811 |
+| Sin superiores 0 / 0 | 9.19e+00 | 6.44e-01 | 0.021471 | 0.102746 | 0.663966 |
+| Doble 1.0 / 0.6 | 5.81e-06 | 6.00e-08 | 0.021040 | 0.101218 | 0.650693 |
+| Alto 2.0 / 1.5 | 2.56e-06 | 1.02e-07 | 0.021037 | 0.101040 | 0.656890 |
+
+Con peso cero los errores relativos suben a 9.19 y 0.644, lo que confirma que la
+ablacion surtio efecto y no quedo absorbida por los demas terminos.
+
+### Resultado: la premisa del metodo se sostiene
+
+Retirar los momentos superiores degrada **las tres reglas de forma
+significativa**, con valores p de Holm de 0.0012 e intervalos que excluyen el
+cero:
+
+| Regla | Relativa | IC95 | p Holm |
+|---|---:|---|---:|
+| CRPS | +2.04% | [+0.00033, +0.00055] | 0.0012 |
+| Energy Score | +1.37% | [+0.00102, +0.00175] | 0.0012 |
+| Variogram Score | +2.02% | [+0.00830, +0.01880] | 0.0012 |
+
+Elevarlos por encima del valor publicado no compra nada: mejora Energy Score un
+0.31% y empeora Variogram Score un 0.93%, ambos significativos, con CRPS sin
+cambio distinguible. La ponderacion publicada esta en un punto razonable.
+
+### La asimetria con el termino de dependencia
+
+Las dos ablaciones apuntan en direcciones opuestas y el contraste es el hallazgo.
+Ajustar la covarianza mas fino perjudica; ajustar los momentos superiores es
+necesario y afinarlos mas resulta neutro.
+
+La explicacion mas plausible esta en la relacion entre parametros y datos. Los
+momentos marginales son cuatro por activo y cada uno se estima sobre la serie
+completa de ese activo. Las covarianzas son ciento cinco sobre la misma muestra,
+de modo que la razon entre senal y ruido por objetivo es mucho menor y ajustar
+cada uno hasta el ultimo digito equivale a ajustar su error de estimacion.
+
+Es la primera medicion del proyecto que respalda una decision de diseno de
+MM-BCD en vez de corregirla. El modelo pierde frente a DCC-GARCH, pero sus
+componentes estan individualmente justificados: matizar que algo no gana no es lo
+mismo que mostrar que sus piezas sobran.
+
 ## [0.21.0] - 2026-09-11
 
 Contraste del hallazgo anterior contra lo unico que decide: el desempeno fuera de
